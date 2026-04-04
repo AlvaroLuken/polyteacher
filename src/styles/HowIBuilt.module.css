@@ -1,0 +1,132 @@
+.page {
+  min-height: 100vh;
+  background: #f5f3ff;
+  padding: 1.25rem;
+}
+
+.article {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  background: #ffffff;
+  border: 1px solid #ddd6fe;
+  border-radius: 14px;
+  padding: 1.5rem 1.6rem;
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.08);
+}
+
+.kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b47b2;
+}
+
+.lead {
+  margin-top: 0.7rem;
+  color: #475467;
+  line-height: 1.65;
+  font-size: 1.02rem;
+}
+
+.article h1 {
+  margin: 0.35rem 0 0;
+  color: #1f1147;
+  font-size: 2rem;
+}
+
+.article h2 {
+  margin: 1.2rem 0 0.5rem;
+  color: #312e81;
+  font-size: 1.2rem;
+}
+
+.article p {
+  margin: 0;
+  color: #344054;
+  line-height: 1.7;
+}
+
+.article section + section {
+  margin-top: 0.35rem;
+}
+
+.article ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1.2rem;
+  color: #344054;
+}
+
+.article li + li {
+  margin-top: 0.3rem;
+}
+
+.routeList li {
+  margin-top: 0.55rem;
+}
+
+.codeBlock {
+  margin: 0.7rem 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e6e0ff;
+  border-radius: 10px;
+  background: #faf8ff;
+  overflow-x: auto;
+}
+
+.codeBlock code {
+  font-size: 0.86rem;
+  color: #1f1147;
+}
+
+.videoWrap {
+  margin-top: 1.1rem;
+  border: 1px solid #ddd6fe;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b1020;
+}
+
+.video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 0;
+  display: block;
+}
+
+.videoHint {
+  margin-top: 0.55rem;
+  font-size: 0.85rem;
+  color: #667085;
+}
+
+.backRow {
+  margin-top: 1.5rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #ebe7ff;
+}
+
+.backRow a {
+  text-decoration: none;
+  color: #4338ca;
+  font-weight: 600;
+}
+
+.backRow a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 0.85rem;
+  }
+
+  .article {
+    padding: 1.1rem;
+  }
+
+  .article h1 {
+    font-size: 1.65rem;
+  }
+}

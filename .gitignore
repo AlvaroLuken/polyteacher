@@ -26,13 +26,32 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # local env files
+.env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*
+!.env.example
 
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
+
+# editor / OS local files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# local secrets / credentials
+*.key
+*.p12
+*.pfx
+*.crt
+*.cert
+*.jks
+credentials.json
+wallet.json
