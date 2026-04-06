@@ -88,11 +88,60 @@ function fallbackEventSlugFromTitle(title: string): string {
   return '';
 }
 
+function renderInlineCode(text: string): ReactNode {
+  const parts = text.split(/`([^`]+)`/g);
+  return parts.map((part, index) => (index % 2 === 1
+    ? <code className={styles.inlineCode} key={`code-${index}`}>{part}</code>
+    : <span key={`text-${index}`}>{part}</span>));
+}
+
 const DOCS_LINKS = {
   gammaEvents: 'https://docs.polymarket.com/developers/gamma-markets-api/get-events',
   auth: 'https://docs.polymarket.com/api-reference/authentication',
   onchainOrderInfo: 'https://docs.polymarket.com/developers/CLOB/orders/onchain-order-info',
   createOrder: 'https://docs.polymarket.com/developers/CLOB/orders/create-order',
+} as const;
+const STEP_RECAPS = {
+  1: {
+    kicker: 'Step 1 Complete ✅',
+    title: 'Nice! You fetched live events with Gamma API. 🔎',
+    summary:
+      'Gamma is Polymarket\'s public market-discovery API. It is designed for event and market exploration: listing active markets, filtering by tags, reading metadata (question, outcomes, images), and powering browse/search experiences without authentication.',
+    takeaway:
+      'Use Gamma first for discovery and context. Trading APIs are easier to use once you have the right event/market metadata.',
+    poweredBy:
+      'At this stage, the core API behavior is event discovery. Gamma\'s events endpoints support broad discovery (`active` / `closed` filtering, sorting, pagination) and targeted lookup by slug. In practice, this is where builders choose the event context before any order workflow begins.',
+  },
+  2: {
+    kicker: 'Step 2 Complete ✅',
+    title: 'Great! You selected a market and an outcome side. 🎯',
+    summary:
+      'Within a chosen event, Gamma exposes the tradable market objects: outcome labels, current prices/probabilities, token identifiers, and display metadata. This turns a high-level topic into a concrete, tradable instrument.',
+    takeaway:
+      'Orders execute on a specific outcome token. Picking the correct market and side is what makes the later trade call valid.',
+    poweredBy:
+      'The API concept here is market resolution: event -> market -> side (YES/NO). That mapping is essential because CLOB orders are submitted against a specific outcome token/asset, not just an event name.',
+  },
+  3: {
+    kicker: 'Step 3 Complete ✅',
+    title: 'Great progress! Your CLOB API credentials are ready. 🔐',
+    summary:
+      'CLOB trading uses a two-layer auth model. L1 authentication proves wallet ownership through an EIP-712 signature. L2 authentication then uses API credentials (`apiKey`, `secret`, `passphrase`) to sign authenticated CLOB requests.',
+    takeaway:
+      'Wallet connection is not enough for private trading actions. You need valid L2 credentials for authenticated CLOB endpoints.',
+    poweredBy:
+      'This API step establishes trading identity and request authorization. Public market-data reads can be unauthenticated, but authenticated trading operations (orders, cancellations, user order queries) require valid L2 credentials and signed headers.',
+  },
+  4: {
+    kicker: 'Step 4 Complete ✅',
+    title: 'Awesome! Allowances are now configured. ⛓️',
+    summary:
+      'CLOB intent is API-based, but settlement is contract-based. Before execution, exchange contracts must have token permissions on-chain: USDC.e allowances for buys and conditional-token approvals for sells.',
+    takeaway:
+      'Treat allowance setup as a required preflight check. Missing approvals are one of the most common reasons orders fail.',
+    poweredBy:
+      'The key protocol checks in this phase are allowance readiness and execution validity. If permissions are missing, orders fail with balance/allowance errors. This is why production trading flows treat approvals and post-approval verification as first-class prerequisites.',
+  },
 } as const;
 const ReactConfetti = dynamic(() => import('react-confetti'), { ssr: false });
 
@@ -139,6 +188,8 @@ export function TutorialFlow() {
   const [step2SelectedMarketId, setStep2SelectedMarketId] = useState('');
   const [hasFetchedMarkets, setHasFetchedMarkets] = useState(false);
   const [isDerivingCreds, setIsDerivingCreds] = useState(false);
+  const [stepRecapModal, setStepRecapModal] = useState<{ from: 1 | 2 | 3 | 4; to: number } | null>(null);
+  const [lessonSectionsViewed, setLessonSectionsViewed] = useState({ insight: false, takeaway: false, happened: false });
 
   const unlocked = {
     step1: true,
@@ -242,6 +293,14 @@ export function TutorialFlow() {
   const selectedEvent = markets.find(
     (market) => (market.eventSlug ?? fallbackEventSlugFromTitle(market.question)) === selectedEventSlug,
   );
+  const stepRecap = stepRecapModal ? STEP_RECAPS[stepRecapModal.from] : null;
+  const canAdvanceFromLessonModal = lessonSectionsViewed.insight && lessonSectionsViewed.takeaway && lessonSectionsViewed.happened;
+
+  const onNextStepClick = () => {
+    if (!canAdvanceStep || activeStep > 4) return;
+    setLessonSectionsViewed({ insight: false, takeaway: false, happened: false });
+    setStepRecapModal({ from: activeStep as 1 | 2 | 3 | 4, to: nextStepNumber });
+  };
 
   const refreshSpecificMarkets = useCallback(async () => {
     const result = await fetchSpecificTutorialMarkets();
@@ -467,10 +526,10 @@ export function TutorialFlow() {
 
   return (
     <div className={styles.tutorialFlow}>
-      <div className={styles.tutorialSplit}>
+      <div className={`${styles.tutorialSplit} ${selectedEventSlug ? styles.tutorialSplitWithFocus : styles.tutorialSplitSingle}`}>
         <div className={styles.stepRail}>
           <p className={styles.moduleLead}>
-            <b>Module 1.1: Place Your First Polymarket Trade</b>. <br /> Go through an interactive flow to learn what Polymarket APIs are needed to execute trades in an application, step by step.
+            <b>Module 1.1: Place Your First Polymarket Trade 🚀</b>. <br /> Go through an interactive flow to learn what Polymarket APIs are needed to execute trades in an application, step by step.
           </p>
           <StepCard
             step={1}
@@ -483,7 +542,7 @@ export function TutorialFlow() {
             showNextStep={activeStep === 1 && hasNextStep}
             canAdvanceStep={canAdvanceStep}
             nextStepHint={nextStepHint}
-            onNextStep={() => setActiveStep(nextStepNumber)}
+            onNextStep={onNextStepClick}
           >
             <p>
               Before you can trade, you need to pick an{' '}
@@ -556,7 +615,7 @@ export function TutorialFlow() {
             showNextStep={activeStep === 2 && hasNextStep}
             canAdvanceStep={canAdvanceStep}
             nextStepHint={nextStepHint}
-            onNextStep={() => setActiveStep(nextStepNumber)}
+            onNextStep={onNextStepClick}
           >
             <p>Events contain grouped sub-markets. Pick any market in this event to continue.</p>
             <div className={styles.stepResult}>
@@ -608,7 +667,7 @@ export function TutorialFlow() {
             showNextStep={activeStep === 3 && hasNextStep}
             canAdvanceStep={canAdvanceStep}
             nextStepHint={nextStepHint}
-            onNextStep={() => setActiveStep(nextStepNumber)}
+            onNextStep={onNextStepClick}
           >
             <p>Polymarket uses your EOA wallet signature to derive L2 API credentials used for authenticated trading requests.</p>
             <p><strong>Wallet status:</strong> {isConnected ? `Connected (${address})` : 'Not connected'}</p>
@@ -689,7 +748,7 @@ export function TutorialFlow() {
             showNextStep={activeStep === 4 && hasNextStep}
             canAdvanceStep={canAdvanceStep}
             nextStepHint={nextStepHint}
-            onNextStep={() => setActiveStep(nextStepNumber)}
+            onNextStep={onNextStepClick}
           >
             <p>Before trading, approve the exchange to spend USDC.e. This is a one-time DEX approval on Polygon.</p>
             <p><strong>Note:</strong> You need USDC.e on Polygon to complete this step onchain.</p>
@@ -849,7 +908,7 @@ export function TutorialFlow() {
             showNextStep={activeStep === 5 && hasNextStep}
             canAdvanceStep={canAdvanceStep}
             nextStepHint={nextStepHint}
-            onNextStep={() => setActiveStep(nextStepNumber)}
+            onNextStep={onNextStepClick}
           >
             <p>Enter how much USDC.e you want to spend. We convert that amount into shares automatically at the live market price.</p>
             <p><strong>Market:</strong> {selectedMarket?.question}</p>
@@ -910,81 +969,155 @@ export function TutorialFlow() {
           </StepCard>
         </div>
 
-        <div className={styles.rightRail}>
-          {step2SelectedMarketId && selectedMarket ? (
-            <section className={styles.marketPreview}>
-              {selectedMarket.image ? (
-                <img
-                  alt={selectedMarket.question}
-                  className={styles.featuredMarketImage}
-                  src={selectedMarket.image}
-                />
-              ) : (
-                <div className={styles.featuredMarketImageFallback}>Polymarket</div>
-              )}
-              <h3>{selectedMarket.question}</h3>
-              {step2SelectedMarketId ? (
-                <>
-                  <p className={styles.apiTag}>Choose your outcome.</p>
-                  <div className={styles.outcomeChooser}>
-                    <button
-                      className={
-                        selectedOutcome === null
-                          ? styles.outcomeButton
-                          : selectedOutcome === 'yes'
-                            ? styles.outcomeYesActive
-                            : styles.outcomeYesPassive
-                      }
-                      onClick={() => setSelectedOutcome('yes')}
-                      type="button"
-                    >
-                      Yes {yesCents}
-                    </button>
-                    <button
-                      className={
-                        selectedOutcome === null
-                          ? styles.outcomeButton
-                          : selectedOutcome === 'no'
-                            ? styles.outcomeNoActive
-                            : styles.outcomeNoPassive
-                      }
-                      onClick={() => setSelectedOutcome('no')}
-                      type="button"
-                    >
-                      No {noCents}
-                    </button>
-                  </div>
-                  {!selectedOutcome ? (
-                    <p className={styles.pollingText}>Select YES or NO to unlock Step 3.</p>
-                  ) : null}
-                </>
-              ) : (
-                <p className={styles.apiTag}>Waiting for specific market selection.</p>
-              )}
-              <p className={styles.pollingText}>Latest poll: {lastFocusedPollLabel}</p>
-            </section>
-          ) : selectedEvent ? (
-            <section className={styles.marketPreview}>
-              {selectedEvent.image ? (
-                <img
-                  alt={selectedEvent.question}
-                  className={styles.featuredMarketImage}
-                  src={selectedEvent.image}
-                />
-              ) : (
-                <div className={styles.featuredMarketImageFallback}>Polymarket</div>
-              )}
-              <h3>{selectedEvent.question}</h3>
-              <p className={styles.apiTag}>Event selected. Continue to Step 2 to choose a specific sub-market.</p>
-            </section>
-          ) : activeStep === 1 ? null : (
-            <section className={styles.marketPreview}>
-              <h3>Focus unlocks in Step 2</h3>
-              <p className={styles.apiTag}>Choose a specific sub-market to load the right-side Yes/No focus view.</p>
-            </section>
-          )}
-        </div>
+        {selectedEventSlug ? (
+          <div className={`${styles.rightRail} ${styles.rightRailAppear}`}>
+            {step2SelectedMarketId && selectedMarket ? (
+              <section className={styles.marketPreview}>
+                {selectedMarket.image ? (
+                  <img
+                    alt={selectedMarket.question}
+                    className={styles.featuredMarketImage}
+                    src={selectedMarket.image}
+                  />
+                ) : (
+                  <div className={styles.featuredMarketImageFallback}>Polymarket</div>
+                )}
+                <h3>{selectedMarket.question}</h3>
+                {step2SelectedMarketId ? (
+                  <>
+                    <p className={styles.apiTag}>Choose your outcome.</p>
+                    <div className={styles.outcomeChooser}>
+                      <button
+                        className={
+                          selectedOutcome === null
+                            ? styles.outcomeButton
+                            : selectedOutcome === 'yes'
+                              ? styles.outcomeYesActive
+                              : styles.outcomeYesPassive
+                        }
+                        onClick={() => setSelectedOutcome('yes')}
+                        type="button"
+                      >
+                        Yes {yesCents}
+                      </button>
+                      <button
+                        className={
+                          selectedOutcome === null
+                            ? styles.outcomeButton
+                            : selectedOutcome === 'no'
+                              ? styles.outcomeNoActive
+                              : styles.outcomeNoPassive
+                        }
+                        onClick={() => setSelectedOutcome('no')}
+                        type="button"
+                      >
+                        No {noCents}
+                      </button>
+                    </div>
+                    {!selectedOutcome ? (
+                      <p className={styles.pollingText}>Select YES or NO to unlock Step 3.</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className={styles.apiTag}>Waiting for specific market selection.</p>
+                )}
+                <p className={styles.pollingText}>Latest poll: {lastFocusedPollLabel}</p>
+              </section>
+            ) : selectedEvent ? (
+              <section className={styles.marketPreview}>
+                {selectedEvent.image ? (
+                  <img
+                    alt={selectedEvent.question}
+                    className={styles.featuredMarketImage}
+                    src={selectedEvent.image}
+                  />
+                ) : (
+                  <div className={styles.featuredMarketImageFallback}>Polymarket</div>
+                )}
+                <h3>{selectedEvent.question}</h3>
+                <p className={styles.apiTag}>Event selected. Continue to Step 2 to choose a specific sub-market.</p>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
       </div>
+      {stepRecapModal && stepRecap ? (
+        <div className={styles.lessonModalOverlay} role="presentation">
+          <section
+            aria-labelledby="lesson-recap-title"
+            aria-modal="true"
+            className={styles.lessonModal}
+            role="dialog"
+          >
+            <button
+              aria-label="Close step recap dialog"
+              className={styles.lessonModalClose}
+              onClick={() => setStepRecapModal(null)}
+              type="button"
+            >
+              X
+            </button>
+            <p className={styles.lessonModalKicker}>{stepRecap.kicker}</p>
+            <h3 id="lesson-recap-title">{stepRecap.title}</h3>
+            <details
+              className={styles.lessonDisclosure}
+              onToggle={(event) => {
+                if (event.currentTarget.open) {
+                  setLessonSectionsViewed((value) => ({ ...value, insight: true }));
+                }
+              }}
+            >
+              <summary className={styles.lessonDisclosureSummary}>API Insight</summary>
+              <p className={styles.lessonModalSummary}>{renderInlineCode(stepRecap.summary)}</p>
+            </details>
+            <details
+              className={styles.lessonDisclosure}
+              onToggle={(event) => {
+                if (event.currentTarget.open) {
+                  setLessonSectionsViewed((value) => ({ ...value, takeaway: true }));
+                }
+              }}
+            >
+              <summary className={styles.lessonDisclosureSummary}>Key Takeaway</summary>
+              <p className={styles.lessonModalTakeawayText}>{renderInlineCode(stepRecap.takeaway)}</p>
+            </details>
+            <details
+              className={styles.lessonPoweredBy}
+              onToggle={(event) => {
+                if (event.currentTarget.open) {
+                  setLessonSectionsViewed((value) => ({ ...value, happened: true }));
+                }
+              }}
+            >
+              <summary className={styles.lessonDisclosureSummary}>What Happened in This Step</summary>
+              <p className={styles.lessonModalPoweredByText}>{renderInlineCode(stepRecap.poweredBy)}</p>
+            </details>
+            {!canAdvanceFromLessonModal ? (
+              <p className={styles.lessonModalUnlockHint}>Open all three sections to unlock Next Step.</p>
+            ) : null}
+            <div className={styles.lessonModalActions}>
+              <button
+                className={styles.lessonModalSecondary}
+                onClick={() => setStepRecapModal(null)}
+                type="button"
+              >
+                Review this step
+              </button>
+              <button
+                className={styles.lessonModalPrimary}
+                disabled={!canAdvanceFromLessonModal}
+                onClick={() => {
+                  setActiveStep(stepRecapModal.to);
+                  setStepRecapModal(null);
+                }}
+                type="button"
+              >
+                Next Step
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
       {isTradeModalOpen && orderResponse ? (
         <div className={styles.tradeModalOverlay} role="presentation">
           <ReactConfetti
@@ -1009,7 +1142,7 @@ export function TutorialFlow() {
             >
               X
             </button>
-            <p className={styles.tradeModalKicker}>Tutorial Complete</p>
+            <p className={styles.tradeModalKicker}>Tutorial Complete 🎉</p>
             <h3 id="trade-complete-title">Your first trade was submitted successfully! ✅</h3>
             <p className={styles.tradeModalLead}>
               You completed the full EOA flow from discovery to execution.
@@ -1030,8 +1163,8 @@ export function TutorialFlow() {
               </p>
             ) : null}
             <div className={styles.tradeModalCta}>
-              <p className={styles.tradeModalNextHint}>Choose your next module action:</p>
-              <p className={styles.tradeModalCoursePath}>Module 1 complete → Continue to Module 2 or review your portfolio.</p>
+              <p className={styles.tradeModalNextHint}>Choose your next module action 👇</p>
+              <p className={styles.tradeModalCoursePath}>Module 1 complete ✅ → Continue to Module 2 or review your portfolio.</p>
               <div className={styles.tradeModalCtaGrid}>
                 <Link className={styles.tradeModalCtaLink} href="/how-i-built-this-app" onClick={() => setIsTradeModalOpen(false)}>
                   <span className={`${styles.primaryButton} ${styles.tradeModalCtaButton}`}>Continue to Module 2</span>
@@ -1100,7 +1233,7 @@ function StepCard({
           {showNextStep ? (
             <section className={styles.rightRailCtaBox}>
               <div>
-                <h4 className={styles.rightRailCtaTitle}>Next Step</h4>
+                <h4 className={styles.rightRailCtaTitle}>Next Step ➡️</h4>
                 <p className={styles.rightRailCtaHint}>{nextStepHint}</p>
               </div>
               <button

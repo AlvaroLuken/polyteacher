@@ -244,7 +244,7 @@ const HowIBuiltThisApp: NextPage = () => {
           <div className={homeStyles.pageBody}>
             <div className={styles.page}>
               <main className={styles.article}>
-            <p className={styles.kicker}>Build Notes</p>
+            <p className={styles.kicker}>Build Notes 🛠️</p>
             <h1>How I Built This App</h1>
             <p className={styles.lead}>
               I built PolyTeacher as a practical, step-by-step onboarding experience for new developers who want to

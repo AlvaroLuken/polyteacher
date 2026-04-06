@@ -310,7 +310,7 @@ const MyPositionsPage: NextPage = () => {
           <main className={styles.mainCard}>
             <div className={styles.headerRow}>
               <div>
-                <h1>My Positions</h1>
+                <h1>My Positions 📊</h1>
                 <p className={styles.subtext}>
                   Polling every {POLL_INTERVAL_MS / 1000}s
                   {lastUpdated ? ` • last updated ${lastUpdated.toLocaleTimeString()}` : ''}
@@ -318,11 +318,11 @@ const MyPositionsPage: NextPage = () => {
               </div>
             </div>
 
-            {!balanceAddress ? <p className={styles.emptyState}>Connect your wallet to view positions.</p> : null}
-            {balanceAddress && isLoading ? <p className={styles.emptyState}>Loading positions...</p> : null}
-            {balanceAddress && !isLoading && isError ? <p className={styles.emptyState}>Could not read positions right now.</p> : null}
+            {!balanceAddress ? <p className={styles.emptyState}>Connect your wallet to view positions. 👛</p> : null}
+            {balanceAddress && isLoading ? <p className={styles.emptyState}>Loading positions... ⏳</p> : null}
+            {balanceAddress && !isLoading && isError ? <p className={styles.emptyState}>Could not read positions right now. ⚠️</p> : null}
             {balanceAddress && !isLoading && !isError && positions.length === 0 ? (
-              <p className={styles.emptyState}>Follow the tutorial to make a trade!</p>
+              <p className={styles.emptyState}>Follow the tutorial to make a trade! 🚀</p>
             ) : null}
 
             {balanceAddress && !isLoading && !isError && positions.length > 0 ? (

@@ -442,6 +442,16 @@
   visibility: visible;
 }
 
+.inlineCode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.88em;
+  border: 1px solid #ddd6fe;
+  border-radius: 6px;
+  background: #f8f6ff;
+  color: #312e81;
+  padding: 0.08rem 0.32rem;
+}
+
 .pageBody {
   min-width: 0;
   display: flex;
@@ -840,9 +850,22 @@
 
 .tutorialSplit {
   display: grid;
-  grid-template-columns: minmax(380px, 1.1fr) minmax(360px, 1.1fr);
   gap: 1.1rem;
   align-items: start;
+}
+
+.tutorialSplitSingle {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0 1rem;
+}
+
+.tutorialSplitWithFocus {
+  grid-template-columns: minmax(380px, 1.1fr) minmax(360px, 1.1fr);
+}
+
+.tutorialSplitSingle .stepRail {
+  width: min(700px, 100%);
+  margin: 0 auto;
 }
 
 .stepRail {
@@ -862,6 +885,21 @@
   border-radius: 14px;
   background: linear-gradient(180deg, #f3efff 0%, #ece7ff 100%);
   border: 1px solid #ddd6fe;
+}
+
+.rightRailAppear {
+  animation: rightRailIn 240ms ease-out;
+}
+
+@keyframes rightRailIn {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .stepCard {
@@ -1419,6 +1457,243 @@
   font-size: 0.82rem;
 }
 
+.lessonModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 58;
+  background: rgba(16, 24, 40, 0.48);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.lessonModal {
+  width: min(560px, 100%);
+  border: 1px solid #e4dcff;
+  border-radius: 16px;
+  background: #ffffff;
+  padding: 0.95rem 1rem 1rem;
+  box-shadow: 0 20px 42px rgba(16, 24, 40, 0.22);
+  position: relative;
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+}
+
+.lessonModal h3 {
+  margin: 0.32rem 0 0;
+  color: #101828;
+  font-size: 1.05rem;
+  line-height: 1.32;
+  font-weight: 800;
+}
+
+.lessonModalClose {
+  position: absolute;
+  right: 0.65rem;
+  top: 0.65rem;
+  border: 1px solid #dfd5ff;
+  border-radius: 8px;
+  background: #fbfaff;
+  color: #3b2b74;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.16rem 0.42rem;
+  cursor: pointer;
+}
+
+.lessonModalKicker {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #5b47b2;
+}
+
+.lessonModalSummary {
+  margin: 0.24rem 0 0;
+  color: #344054;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.lessonModalTakeawayText {
+  margin: 0.24rem 0 0;
+  color: #4338ca;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.lessonDisclosure {
+  margin-top: 0.55rem;
+  border: 1px solid #ece3ff;
+  border-radius: 11px;
+  background: #fcfbff;
+  padding: 0.5rem 0.64rem;
+}
+
+.lessonDisclosureSummary {
+  cursor: pointer;
+  list-style: none;
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #5b47b2;
+}
+
+.lessonDisclosureSummary::-webkit-details-marker {
+  display: none;
+}
+
+.lessonPoweredBy {
+  margin-top: 0.58rem;
+  border: 1px solid #ddd6fe;
+  border-radius: 11px;
+  background: #f8f6ff;
+  padding: 0.58rem 0.66rem;
+}
+
+.lessonModalPoweredByText {
+  margin: 0.24rem 0 0;
+  color: #312e81;
+  font-size: 0.9rem;
+  line-height: 1.48;
+}
+
+.lessonModalActions {
+  margin-top: 0.68rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.lessonModalPrimary,
+.lessonModalSecondary {
+  border-radius: 9px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 0.48rem 0.8rem;
+  cursor: pointer;
+}
+
+.lessonModalPrimary {
+  border: 1px solid #4f46e5;
+  background: #4f46e5;
+  color: #ffffff;
+}
+
+.lessonModalPrimary:hover {
+  background: #4338ca;
+}
+
+.lessonModalPrimary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #6d64f0;
+}
+
+.lessonModalSecondary {
+  border: 1px solid #cfc5ff;
+  background: #f6f3ff;
+  color: #312e81;
+}
+
+.lessonModalSecondary:hover {
+  background: #ede8ff;
+  border-color: #b5a7ff;
+}
+
+.lessonModalUnlockHint {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  color: #5b47b2;
+  font-weight: 600;
+}
+
+.introModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(16, 24, 40, 0.62);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.introModal {
+  width: min(860px, 100%);
+  border: 1px solid #ddd6fe;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 26px 52px rgba(16, 24, 40, 0.34);
+  padding: 1rem;
+}
+
+.introModalKicker {
+  margin: 0;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #5b47b2;
+  font-weight: 800;
+}
+
+.introModal h2 {
+  margin: 0.3rem 0 0;
+  color: #1f1147;
+  font-size: 1.45rem;
+}
+
+.introModalLead {
+  margin: 0.35rem 0 0.65rem;
+  color: #475467;
+  font-size: 0.95rem;
+}
+
+.introVideoFrame {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b1020;
+}
+
+.introVideoFrame :global(iframe) {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.introModalHint {
+  margin: 0.58rem 0 0;
+  color: #4b5563;
+  font-size: 0.88rem;
+}
+
+.introEnterButton {
+  margin-top: 0.62rem;
+  border: 1px solid #4f46e5;
+  border-radius: 10px;
+  background: #4f46e5;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 700;
+  padding: 0.56rem 0.95rem;
+  cursor: pointer;
+}
+
+.introEnterButton:hover:not(:disabled) {
+  background: #4338ca;
+}
+
+.introEnterButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .tradeModalOverlay {
   position: fixed;
   inset: 0;
@@ -1704,6 +1979,10 @@
 
   .featuredMarketImageFallback {
     height: 110px;
+  }
+
+  .lessonModalActions {
+    grid-template-columns: 1fr;
   }
 
   .tradeModalCtaGrid {

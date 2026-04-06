@@ -2,7 +2,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPublicClient, erc20Abi, formatUnits, http } from 'viem';
 import { polygon } from 'viem/chains';
 import { useAccount, useWalletClient } from 'wagmi';
@@ -12,6 +12,8 @@ import styles from '../styles/Home.module.css';
 
 const POLYGON_RPC_URL = process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://polygon-rpc.com';
 const USDC_E_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as const;
+const INTRO_VIDEO_ID = 'd0cUEKJAa7o';
+const INTRO_VIDEO_STORAGE_KEY = 'polyteacher:intro-video-complete-v1';
 
 type PositionSnapshot = {
   title?: string;
@@ -37,6 +39,10 @@ const Home: NextPage = () => {
   const [positionError, setPositionError] = useState(false);
   const [positionCount, setPositionCount] = useState(0);
   const [positionRefreshTick, setPositionRefreshTick] = useState(0);
+  const [showIntroModal, setShowIntroModal] = useState(false);
+  const [isIntroVideoEnded, setIsIntroVideoEnded] = useState(false);
+  const [isIntroPlayerReady, setIsIntroPlayerReady] = useState(false);
+  const introPlayerRef = useRef<any>(null);
 
   useEffect(() => {
     if (!balanceAddress) {
@@ -85,6 +91,77 @@ const Home: NextPage = () => {
       window.removeEventListener('polyteacher:trade-executed', onTradeExecuted);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isCompleted = window.localStorage.getItem(INTRO_VIDEO_STORAGE_KEY) === '1';
+    if (!isCompleted) {
+      setShowIntroModal(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (showIntroModal) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+    document.body.style.overflow = '';
+    return undefined;
+  }, [showIntroModal]);
+
+  useEffect(() => {
+    if (!showIntroModal || typeof window === 'undefined') return;
+
+    let cancelled = false;
+
+    const initPlayer = () => {
+      if (cancelled) return;
+      const YT = (window as any).YT;
+      if (!YT?.Player || introPlayerRef.current) return;
+      introPlayerRef.current = new YT.Player('polyteacher-intro-player', {
+        videoId: INTRO_VIDEO_ID,
+        playerVars: {
+          rel: 0,
+          modestbranding: 1,
+        },
+        events: {
+          onReady: () => {
+            if (!cancelled) setIsIntroPlayerReady(true);
+          },
+          onStateChange: (event: any) => {
+            if (event?.data === YT.PlayerState.ENDED && !cancelled) {
+              setIsIntroVideoEnded(true);
+            }
+          },
+        },
+      });
+    };
+
+    const YT = (window as any).YT;
+    if (YT?.Player) {
+      initPlayer();
+    } else {
+      let script = document.getElementById('youtube-iframe-api') as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement('script');
+        script.id = 'youtube-iframe-api';
+        script.src = 'https://www.youtube.com/iframe_api';
+        document.body.appendChild(script);
+      }
+      const previousReady = (window as any).onYouTubeIframeAPIReady;
+      (window as any).onYouTubeIframeAPIReady = () => {
+        if (typeof previousReady === 'function') previousReady();
+        initPlayer();
+      };
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showIntroModal]);
 
   useEffect(() => {
     if (!balanceAddress) {
@@ -287,6 +364,41 @@ const Home: NextPage = () => {
           </div>
         </div>
       </div>
+      {showIntroModal ? (
+        <div className={styles.introModalOverlay} role="presentation">
+          <section
+            aria-labelledby="intro-video-title"
+            aria-modal="true"
+            className={styles.introModal}
+            role="dialog"
+          >
+            <p className={styles.introModalKicker}>Welcome to PolyTeacher 👨‍🏫</p>
+            <h2 id="intro-video-title">Quick App Intro</h2>
+            <p className={styles.introModalLead}>
+              Watch this short intro before starting the course flow.
+            </p>
+            <div className={styles.introVideoFrame} id="polyteacher-intro-player" />
+            <p className={styles.introModalHint}>
+              {isIntroVideoEnded
+                ? 'Intro complete. You can now enter the app.'
+                : isIntroPlayerReady
+                  ? 'Watch until the end to unlock the app.'
+                  : 'Loading intro video...'}
+            </p>
+            <button
+              className={styles.introEnterButton}
+              disabled={!isIntroVideoEnded}
+              onClick={() => {
+                window.localStorage.setItem(INTRO_VIDEO_STORAGE_KEY, '1');
+                setShowIntroModal(false);
+              }}
+              type="button"
+            >
+              Enter App
+            </button>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 };
