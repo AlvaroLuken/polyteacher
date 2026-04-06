@@ -333,6 +333,17 @@ const Home: NextPage = () => {
                   </div>
                 </div>
                 <div className={styles.sidebarFooter}>
+                  <div className={styles.sidebarFooterInlineCtas}>
+                    <Link className={styles.sidebarFooterInlineLink} href="/glossary">
+                      Glossary
+                    </Link>
+                    <span aria-hidden="true" className={styles.sidebarFooterDivider}>
+                      |
+                    </span>
+                    <Link className={styles.sidebarFooterInlineLink} href="/feedback">
+                      Feedback
+                    </Link>
+                  </div>
                   <button
                     aria-label="Hide left navbar"
                     className={styles.sidebarNavToggle}

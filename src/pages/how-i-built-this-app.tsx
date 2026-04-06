@@ -10,7 +10,6 @@ import { useAccount, useWalletClient } from 'wagmi';
 import styles from '../styles/HowIBuilt.module.css';
 import homeStyles from '../styles/Home.module.css';
 
-const DEFAULT_VIDEO_EMBED_URL = 'https://www.youtube.com/embed/aqz-KE-bpKQ';
 const POLYGON_RPC_URL = process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://polygon-rpc.com';
 const USDC_E_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as const;
 
@@ -31,7 +30,6 @@ const HowIBuiltThisApp: NextPage = () => {
   const [isUsdcError, setIsUsdcError] = useState(false);
   const [usdcDisplayRaw, setUsdcDisplayRaw] = useState<string | null>(null);
   const [positionCount, setPositionCount] = useState(0);
-  const embedUrl = process.env.NEXT_PUBLIC_HOW_I_BUILT_VIDEO_URL ?? DEFAULT_VIDEO_EMBED_URL;
 
   useEffect(() => {
     if (!balanceAddress) {
@@ -217,6 +215,17 @@ const HowIBuiltThisApp: NextPage = () => {
                   </div>
                 </div>
                 <div className={homeStyles.sidebarFooter}>
+                  <div className={homeStyles.sidebarFooterInlineCtas}>
+                    <Link className={homeStyles.sidebarFooterInlineLink} href="/glossary">
+                      Glossary
+                    </Link>
+                    <span aria-hidden="true" className={homeStyles.sidebarFooterDivider}>
+                      |
+                    </span>
+                    <Link className={homeStyles.sidebarFooterInlineLink} href="/feedback">
+                      Feedback
+                    </Link>
+                  </div>
                   <button
                     aria-label="Hide left navbar"
                     className={homeStyles.sidebarNavToggle}
@@ -252,20 +261,6 @@ const HowIBuiltThisApp: NextPage = () => {
               and why each step exists.
             </p>
 
-            <div className={styles.videoWrap}>
-              <iframe
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                className={styles.video}
-                referrerPolicy="strict-origin-when-cross-origin"
-                src={embedUrl}
-                title="How I built this app"
-              />
-            </div>
-            <p className={styles.videoHint}>
-              Set <code>NEXT_PUBLIC_HOW_I_BUILT_VIDEO_URL</code> to replace the embedded video.
-            </p>
-
             <section>
               <h2>0) Project Bootstrap (Next.js + RainbowKit)</h2>
               <p>
@@ -294,21 +289,6 @@ const HowIBuiltThisApp: NextPage = () => {
               </ul>
             </section>
 
-            <section id="events-vs-markets">
-              <h2>Events vs Markets (Quick Glossary)</h2>
-              <p>
-                In Polymarket terms, an <strong>event</strong> is the parent prediction topic, and a <strong>market</strong> is
-                a specific tradable outcome under that event.
-              </p>
-              <ul>
-                <li><strong>Event:</strong> The umbrella question/theme (for example, an election, CPI release, or sports match).</li>
-                <li><strong>Market:</strong> A specific YES/NO contract you can buy or sell inside that event.</li>
-              </ul>
-              <p>
-                In this app, Step 1 selects the event first so the learner understands context, then Step 2 picks one
-                specific market to trade.
-              </p>
-            </section>
 
             <section>
               <h2>2) API Routes I Added (and Why)</h2>

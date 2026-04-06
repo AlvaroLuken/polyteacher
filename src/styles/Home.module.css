@@ -257,6 +257,37 @@
   gap: 0.55rem;
 }
 
+.sidebarFooterInlineCtas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid #dbe5ff;
+  border-radius: 8px;
+  background: #f7faff;
+  padding: 0.4rem 0.5rem;
+}
+
+.sidebarFooterInlineLink {
+  color: #2563eb;
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.sidebarFooterInlineLink:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+}
+
+.sidebarFooterDivider {
+  color: #93a4cb;
+  font-weight: 600;
+  line-height: 1;
+}
+
 .sidebarFooterLink {
   display: block;
   text-decoration: none;
