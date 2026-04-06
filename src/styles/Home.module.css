@@ -1791,6 +1791,7 @@
 .tradeModalTx a {
   text-decoration: none;
   font-weight: 600;
+  color: #2563eb;
 }
 
 .tradeModalTx a:hover {
@@ -1832,19 +1833,35 @@
 }
 
 .tradeModalCtaButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   width: 100%;
-  text-align: center;
+  height: 46px;
   margin-top: 0;
+  line-height: 1.2;
+  border-radius: 9px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0 0.9rem;
+  text-align: center;
+}
+
+.tradeModalPrimaryButton {
+  border: 1px solid #4f46e5;
+  background: #4f46e5;
+  color: #ffffff;
+}
+
+.tradeModalPrimaryButton:hover {
+  background: #4338ca;
 }
 
 .tradeModalSecondaryButton {
   border: 1px solid #cfc5ff;
-  border-radius: 9px;
   background: #f6f3ff;
   color: #312e81;
-  font-weight: 700;
-  font-size: 0.9rem;
-  padding: 0.55rem 0.9rem;
 }
 
 .tradeModalSecondaryButton:hover {

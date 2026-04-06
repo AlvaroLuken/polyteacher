@@ -98,16 +98,28 @@ const MyPositionsPage: NextPage = () => {
 
     setIsLoading(true);
     setIsError(false);
-    const proxyUrl = `/api/data/positions?user=${encodeURIComponent(balanceAddress)}&limit=25`;
-    const directUrl = `https://data-api.polymarket.com/positions?user=${encodeURIComponent(balanceAddress.toLowerCase())}&limit=25&sortBy=TOKENS&sortDirection=DESC&sizeThreshold=0`;
+    const pageSize = 25;
+    const proxyBase = `/api/data/positions?user=${encodeURIComponent(balanceAddress)}&limit=${pageSize}`;
+    const directBase = `https://data-api.polymarket.com/positions?user=${encodeURIComponent(balanceAddress.toLowerCase())}&limit=${pageSize}&sortBy=TOKENS&sortDirection=DESC&sizeThreshold=0`;
+    const startedAt = Date.now();
+    console.log('[My Positions] Starting fetch cycle.', {
+      balanceAddress,
+      proxyBase,
+      directBase,
+    });
 
     const fetchVia = async (url: string) => {
       const response = await fetch(url);
+      console.log('[My Positions] Fetch response received.', {
+        url,
+        ok: response.ok,
+        status: response.status,
+      });
       if (!response.ok) {
         const body = await response.text();
         throw new Error(`HTTP ${response.status}: ${body.slice(0, 120)}`);
       }
-      return (await response.json()) as Array<{
+      const payload = (await response.json()) as Array<{
         title?: string;
         outcome?: string;
         size?: number;
@@ -119,6 +131,45 @@ const MyPositionsPage: NextPage = () => {
         clobTokenId?: string | number;
         clob_token_id?: string | number;
       }>;
+      console.log('[My Positions] Parsed payload sample.', {
+        url,
+        count: Array.isArray(payload) ? payload.length : -1,
+        first: Array.isArray(payload) && payload.length > 0
+          ? {
+            title: payload[0].title,
+            outcome: payload[0].outcome,
+            size: payload[0].size,
+            currentValue: payload[0].currentValue,
+            tokenId: payload[0].tokenId ?? payload[0].tokenID ?? payload[0].asset,
+          }
+          : null,
+      });
+      return payload;
+    };
+
+    const fetchAllPages = async (baseUrl: string) => {
+      const combined: Array<{
+        title?: string;
+        outcome?: string;
+        size?: number;
+        currentValue?: number;
+        icon?: string;
+        asset?: string | number;
+        tokenId?: string | number;
+        tokenID?: string | number;
+        clobTokenId?: string | number;
+        clob_token_id?: string | number;
+      }> = [];
+      let offset = 0;
+      for (let page = 0; page < 200; page += 1) {
+        const separator = baseUrl.includes('?') ? '&' : '?';
+        const pageUrl = `${baseUrl}${separator}offset=${offset}`;
+        const rows = await fetchVia(pageUrl);
+        combined.push(...rows);
+        if (rows.length < pageSize) break;
+        offset += pageSize;
+      }
+      return combined;
     };
 
     try {
@@ -135,11 +186,15 @@ const MyPositionsPage: NextPage = () => {
         clob_token_id?: string | number;
       }> = [];
       try {
-        results = await fetchVia(proxyUrl);
+        results = await fetchAllPages(proxyBase);
       } catch (proxyError) {
         console.error('[My Positions] Proxy fetch failed, trying direct Data API.', { proxyError, balanceAddress });
-        results = await fetchVia(directUrl);
+        results = await fetchAllPages(directBase);
       }
+      console.log('[My Positions] Mapping position results.', {
+        rawCount: results.length,
+        elapsedMs: Date.now() - startedAt,
+      });
       setPositions(
         results.map((position) => ({
           title: position.title ?? 'Untitled position',
@@ -158,6 +213,10 @@ const MyPositionsPage: NextPage = () => {
         })),
       );
       setLastUpdated(new Date());
+      console.log('[My Positions] Position state updated.', {
+        mappedCount: results.length,
+        elapsedMs: Date.now() - startedAt,
+      });
     } catch (error) {
       console.error('[My Positions] Position polling failed.', { error, balanceAddress });
       setPositions([]);
@@ -250,13 +309,16 @@ const MyPositionsPage: NextPage = () => {
 
   useEffect(() => {
     const onTradeExecuted = () => {
+      console.log('[My Positions] Received trade executed event. Triggering refresh.', {
+        balanceAddress,
+      });
       void fetchPositions();
     };
     window.addEventListener('polyteacher:trade-executed', onTradeExecuted);
     return () => {
       window.removeEventListener('polyteacher:trade-executed', onTradeExecuted);
     };
-  }, [fetchPositions]);
+  }, [fetchPositions, balanceAddress]);
 
   const usdcDisplay = (() => {
     if (!balanceAddress) return 'Connect wallet';
@@ -301,6 +363,14 @@ const MyPositionsPage: NextPage = () => {
                   <span className={homeStyles.topNavTabBadge}>{myPositionsCount > 99 ? '99+' : myPositionsCount}</span>
                 ) : null}
               </Link>
+              <a
+                className={homeStyles.topNavTab}
+                href="https://github.com/AlvaroLuken/polyteacher"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className={homeStyles.topNavTabText}>GitHub ↗</span>
+              </a>
               <ConnectButton />
             </div>
           </div>

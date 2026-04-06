@@ -8,6 +8,7 @@ export default async function handler(
 ) {
   const user = Array.isArray(req.query.user) ? req.query.user[0] : req.query.user;
   const limit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+  const offset = Array.isArray(req.query.offset) ? req.query.offset[0] : req.query.offset;
 
   if (!user) {
     res.status(400).json({ error: 'Missing required query param: user' });
@@ -27,10 +28,18 @@ export default async function handler(
     sortDirection: 'DESC',
     sizeThreshold: '0',
   });
+  if (offset) {
+    params.set('offset', offset);
+  }
 
   try {
     const url = `${DATA_API_BASE}/positions?${params.toString()}`;
-    console.log('[Data API Proxy] Fetching positions.', { user: normalizedUser, limit: params.get('limit') });
+    console.log('[Data API Proxy] Fetching positions.', {
+      user: normalizedUser,
+      limit: params.get('limit'),
+      offset: params.get('offset') ?? '0',
+      url,
+    });
     const response = await fetch(url, {
       headers: {
         accept: 'application/json',
@@ -47,7 +56,20 @@ export default async function handler(
     }
     const parsed = JSON.parse(raw) as unknown;
     const data = Array.isArray(parsed) ? parsed : [];
-    console.log('[Data API Proxy] Positions fetched.', { user: normalizedUser, count: data.length });
+    const first = data[0] as Record<string, unknown> | undefined;
+    console.log('[Data API Proxy] Positions fetched.', {
+      user: normalizedUser,
+      count: data.length,
+      first: first
+        ? {
+          title: first.title,
+          outcome: first.outcome,
+          size: first.size,
+          currentValue: first.currentValue,
+          tokenId: first.tokenId ?? first.tokenID ?? first.asset ?? first.clobTokenId,
+        }
+        : null,
+    });
     res.status(200).json(Array.isArray(data) ? data : []);
   } catch (error) {
     console.error('[Data API Proxy] Failed to fetch positions.', { error, user });

@@ -1142,14 +1142,12 @@ export function TutorialFlow() {
               </p>
             ) : null}
             <div className={styles.tradeModalCta}>
-              <p className={styles.tradeModalNextHint}>Choose your next module action 👇</p>
-              <p className={styles.tradeModalCoursePath}>Module 1 complete ✅ → Continue to Module 2 or review your portfolio.</p>
               <div className={styles.tradeModalCtaGrid}>
                 <Link className={styles.tradeModalCtaLink} href="/how-i-built-this-app" onClick={() => setIsTradeModalOpen(false)}>
-                  <span className={`${styles.primaryButton} ${styles.tradeModalCtaButton}`}>Continue to Module 2</span>
+                  <span className={`${styles.tradeModalCtaButton} ${styles.tradeModalPrimaryButton}`}>Start Module 2</span>
                 </Link>
                 <Link className={styles.tradeModalCtaLink} href="/my-positions" onClick={() => setIsTradeModalOpen(false)}>
-                  <span className={`${styles.tradeModalCtaButton} ${styles.tradeModalSecondaryButton}`}>Go to My Positions</span>
+                  <span className={`${styles.tradeModalCtaButton} ${styles.tradeModalSecondaryButton}`}>Go To My Positions</span>
                 </Link>
               </div>
             </div>

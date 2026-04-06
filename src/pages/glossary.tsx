@@ -36,6 +36,14 @@ const GlossaryPage: NextPage = () => {
               <Link className={homeStyles.topNavTab} href="/my-positions">
                 <span className={homeStyles.topNavTabText}>My Positions</span>
               </Link>
+              <a
+                className={homeStyles.topNavTab}
+                href="https://github.com/AlvaroLuken/polyteacher"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className={homeStyles.topNavTabText}>GitHub ↗</span>
+              </a>
               <ConnectButton />
             </div>
           </div>

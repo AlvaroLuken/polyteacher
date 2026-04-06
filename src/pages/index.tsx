@@ -274,6 +274,14 @@ const Home: NextPage = () => {
                   <span className={styles.topNavTabBadge}>{myPositionsCount > 99 ? '99+' : myPositionsCount}</span>
                 ) : null}
               </Link>
+              <a
+                className={styles.topNavTab}
+                href="https://github.com/AlvaroLuken/polyteacher"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className={styles.topNavTabText}>GitHub ↗</span>
+              </a>
               <ConnectButton />
             </div>
           </div>

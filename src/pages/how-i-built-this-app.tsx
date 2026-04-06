@@ -156,6 +156,14 @@ const HowIBuiltThisApp: NextPage = () => {
                   <span className={homeStyles.topNavTabBadge}>{myPositionsCount > 99 ? '99+' : myPositionsCount}</span>
                 ) : null}
               </Link>
+              <a
+                className={homeStyles.topNavTab}
+                href="https://github.com/AlvaroLuken/polyteacher"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className={homeStyles.topNavTabText}>GitHub ↗</span>
+              </a>
               <ConnectButton />
             </div>
           </div>
