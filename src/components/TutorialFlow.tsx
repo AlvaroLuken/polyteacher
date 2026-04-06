@@ -107,8 +107,6 @@ const STEP_RECAPS = {
     title: 'Nice! You fetched live events with Gamma API. 🔎',
     summary:
       'Gamma is Polymarket\'s public market-discovery API. It is designed for event and market exploration: listing active markets, filtering by tags, reading metadata (question, outcomes, images), and powering browse/search experiences without authentication.',
-    takeaway:
-      'Use Gamma first for discovery and context. Trading APIs are easier to use once you have the right event/market metadata.',
     poweredBy:
       'At this stage, the core API behavior is event discovery. Gamma\'s events endpoints support broad discovery (`active` / `closed` filtering, sorting, pagination) and targeted lookup by slug. In practice, this is where builders choose the event context before any order workflow begins.',
   },
@@ -117,8 +115,6 @@ const STEP_RECAPS = {
     title: 'Great! You selected a market and an outcome side. 🎯',
     summary:
       'Within a chosen event, Gamma exposes the tradable market objects: outcome labels, current prices/probabilities, token identifiers, and display metadata. This turns a high-level topic into a concrete, tradable instrument.',
-    takeaway:
-      'Orders execute on a specific outcome token. Picking the correct market and side is what makes the later trade call valid.',
     poweredBy:
       'The API concept here is market resolution: event -> market -> side (YES/NO). That mapping is essential because CLOB orders are submitted against a specific outcome token/asset, not just an event name.',
   },
@@ -127,8 +123,6 @@ const STEP_RECAPS = {
     title: 'Great progress! Your CLOB API credentials are ready. 🔐',
     summary:
       'CLOB trading uses a two-layer auth model. L1 authentication proves wallet ownership through an EIP-712 signature. L2 authentication then uses API credentials (`apiKey`, `secret`, `passphrase`) to sign authenticated CLOB requests.',
-    takeaway:
-      'Wallet connection is not enough for private trading actions. You need valid L2 credentials for authenticated CLOB endpoints.',
     poweredBy:
       'This API step establishes trading identity and request authorization. Public market-data reads can be unauthenticated, but authenticated trading operations (orders, cancellations, user order queries) require valid L2 credentials and signed headers.',
   },
@@ -137,8 +131,6 @@ const STEP_RECAPS = {
     title: 'Awesome! Allowances are now configured. ⛓️',
     summary:
       'CLOB intent is API-based, but settlement is contract-based. Before execution, exchange contracts must have token permissions on-chain: USDC.e allowances for buys and conditional-token approvals for sells.',
-    takeaway:
-      'Treat allowance setup as a required preflight check. Missing approvals are one of the most common reasons orders fail.',
     poweredBy:
       'The key protocol checks in this phase are allowance readiness and execution validity. If permissions are missing, orders fail with balance/allowance errors. This is why production trading flows treat approvals and post-approval verification as first-class prerequisites.',
   },
@@ -189,7 +181,7 @@ export function TutorialFlow() {
   const [hasFetchedMarkets, setHasFetchedMarkets] = useState(false);
   const [isDerivingCreds, setIsDerivingCreds] = useState(false);
   const [stepRecapModal, setStepRecapModal] = useState<{ from: 1 | 2 | 3 | 4; to: number } | null>(null);
-  const [lessonSectionsViewed, setLessonSectionsViewed] = useState({ insight: false, takeaway: false, happened: false });
+  const [lessonSectionsViewed, setLessonSectionsViewed] = useState({ insight: false, happened: false });
 
   const unlocked = {
     step1: true,
@@ -294,11 +286,11 @@ export function TutorialFlow() {
     (market) => (market.eventSlug ?? fallbackEventSlugFromTitle(market.question)) === selectedEventSlug,
   );
   const stepRecap = stepRecapModal ? STEP_RECAPS[stepRecapModal.from] : null;
-  const canAdvanceFromLessonModal = lessonSectionsViewed.insight && lessonSectionsViewed.takeaway && lessonSectionsViewed.happened;
+  const canAdvanceFromLessonModal = lessonSectionsViewed.insight && lessonSectionsViewed.happened;
 
   const onNextStepClick = () => {
     if (!canAdvanceStep || activeStep > 4) return;
-    setLessonSectionsViewed({ insight: false, takeaway: false, happened: false });
+    setLessonSectionsViewed({ insight: false, happened: false });
     setStepRecapModal({ from: activeStep as 1 | 2 | 3 | 4, to: nextStepNumber });
   };
 
@@ -1071,17 +1063,6 @@ export function TutorialFlow() {
               <p className={styles.lessonModalSummary}>{renderInlineCode(stepRecap.summary)}</p>
             </details>
             <details
-              className={styles.lessonDisclosure}
-              onToggle={(event) => {
-                if (event.currentTarget.open) {
-                  setLessonSectionsViewed((value) => ({ ...value, takeaway: true }));
-                }
-              }}
-            >
-              <summary className={styles.lessonDisclosureSummary}>Key Takeaway</summary>
-              <p className={styles.lessonModalTakeawayText}>{renderInlineCode(stepRecap.takeaway)}</p>
-            </details>
-            <details
               className={styles.lessonPoweredBy}
               onToggle={(event) => {
                 if (event.currentTarget.open) {
@@ -1092,9 +1073,7 @@ export function TutorialFlow() {
               <summary className={styles.lessonDisclosureSummary}>What Happened in This Step</summary>
               <p className={styles.lessonModalPoweredByText}>{renderInlineCode(stepRecap.poweredBy)}</p>
             </details>
-            {!canAdvanceFromLessonModal ? (
-              <p className={styles.lessonModalUnlockHint}>Open all three sections to unlock Next Step.</p>
-            ) : null}
+            {!canAdvanceFromLessonModal ? <p className={styles.lessonModalUnlockHint}>Open both sections to unlock Next Step.</p> : null}
             <div className={styles.lessonModalActions}>
               <button
                 className={styles.lessonModalSecondary}
