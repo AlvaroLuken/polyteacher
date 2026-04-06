@@ -262,6 +262,14 @@ const HowIBuiltThisApp: NextPage = () => {
             </p>
 
             <section>
+              <h2>Tooling Note (Cursor + model)</h2>
+              <p>
+                I built this app in Cursor and used <code>gpt-5.3-codex</code> as my coding assistant model for
+                implementation and iterative refinement.
+              </p>
+            </section>
+
+            <section>
               <h2>0) Project Bootstrap (Next.js + RainbowKit)</h2>
               <p>
                 I started with RainbowKit&apos;s starter so wallet UX was solved first, then layered Polymarket logic
