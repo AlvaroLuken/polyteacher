@@ -257,6 +257,35 @@
   gap: 0.55rem;
 }
 
+.sidebarFooterActions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.sidebarFooterActions .sidebarNavToggle {
+  flex: 1 1 0;
+}
+
+.sidebarGithubIconLink {
+  flex: 1 1 0;
+  height: 34px;
+  border: 1px solid #cfc5ff;
+  border-radius: 8px;
+  background: #f3f0ff;
+  color: #1f1147;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.sidebarGithubIconLink:hover {
+  background: #e9e3ff;
+  border-color: #b9aaff;
+}
+
 .sidebarFooterInlineCtas {
   display: flex;
   align-items: center;
@@ -1557,9 +1586,12 @@
 }
 
 .lessonDisclosureSummary {
+  display: block;
+  width: 100%;
   cursor: pointer;
   list-style: none;
   margin: 0;
+  padding: 0.08rem 0;
   font-size: 0.82rem;
   font-weight: 800;
   letter-spacing: 0.03em;
@@ -1956,13 +1988,55 @@
 
 @media (max-width: 600px) {
   .container {
-    padding: 0 1rem;
+    padding: 0;
   }
 
   .appShell {
     grid-template-columns: 1fr;
     gap: 0.8rem;
-    padding-top: 0.7rem;
+    padding: 0.7rem;
+  }
+
+  .topNav {
+    min-height: auto;
+    padding: 0.55rem 0;
+  }
+
+  .topNavInner {
+    width: calc(100% - 20px);
+    margin: 0 10px;
+    gap: 0.45rem;
+    align-items: flex-start;
+  }
+
+  .topNavLeft {
+    min-width: 0;
+  }
+
+  .topNavRight {
+    min-width: 0;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .topNavTitle {
+    font-size: 1.08rem;
+  }
+
+  .topNavTab {
+    padding: 0.33rem 0.58rem;
+    font-size: 0.78rem;
+  }
+
+  .topNavBalanceTooltip {
+    display: none;
+  }
+
+  .topNavTabBadge {
+    min-width: 20px;
+    height: 20px;
+    font-size: 0.7rem;
   }
 
   .sidebarNav {

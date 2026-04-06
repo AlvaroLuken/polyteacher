@@ -156,14 +156,6 @@ const HowIBuiltThisApp: NextPage = () => {
                   <span className={homeStyles.topNavTabBadge}>{myPositionsCount > 99 ? '99+' : myPositionsCount}</span>
                 ) : null}
               </Link>
-              <a
-                className={homeStyles.topNavTab}
-                href="https://github.com/AlvaroLuken/polyteacher"
-                rel="noreferrer"
-                target="_blank"
-              >
-                <span className={homeStyles.topNavTabText}>GitHub ↗</span>
-              </a>
               <ConnectButton />
             </div>
           </div>
@@ -234,14 +226,31 @@ const HowIBuiltThisApp: NextPage = () => {
                       Feedback
                     </Link>
                   </div>
-                  <button
-                    aria-label="Hide left navbar"
-                    className={homeStyles.sidebarNavToggle}
-                    onClick={() => setSidebarOpen(false)}
-                    type="button"
-                  >
-                    Hide Navbar
-                  </button>
+                  <div className={homeStyles.sidebarFooterActions}>
+                    <button
+                      aria-label="Hide left navbar"
+                      className={homeStyles.sidebarNavToggle}
+                      onClick={() => setSidebarOpen(false)}
+                      type="button"
+                    >
+                      Hide Navbar
+                    </button>
+                    <a
+                      aria-label="Open GitHub repository"
+                      className={homeStyles.sidebarGithubIconLink}
+                      href="https://github.com/AlvaroLuken/polyteacher"
+                      rel="noreferrer"
+                      target="_blank"
+                      title="GitHub repository"
+                    >
+                      <svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16">
+                        <path
+                          d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38v-1.33c-2.23.49-2.7-1.08-2.7-1.08-.37-.93-.9-1.18-.9-1.18-.73-.5.06-.49.06-.49.81.06 1.24.83 1.24.83.72 1.23 1.88.88 2.34.67.07-.52.28-.88.5-1.08-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.58.82-2.14-.08-.2-.36-1.01.08-2.1 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.09.16 1.9.08 2.1.51.56.82 1.27.82 2.14 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.14.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                    </a>
+                  </div>
                 </div>
               </>
             ) : (
