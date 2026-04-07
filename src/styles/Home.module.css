@@ -1586,17 +1586,24 @@
 }
 
 .lessonDisclosureSummary {
-  display: block;
-  width: 100%;
+  display: flex;
+  align-items: center;
+  width: calc(100% + 0.4rem);
   cursor: pointer;
   list-style: none;
-  margin: 0;
-  padding: 0.08rem 0;
+  margin: -0.2rem -0.2rem;
+  min-height: 40px;
+  padding: 0.55rem 0.5rem;
   font-size: 0.82rem;
   font-weight: 800;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: #5b47b2;
+  border-radius: 8px;
+}
+
+.lessonDisclosureSummary:hover {
+  background: #f7f4ff;
 }
 
 .lessonDisclosureSummary::-webkit-details-marker {
@@ -1913,6 +1920,35 @@
   margin-top: 0.6rem;
   color: #475467;
   font-size: 0.9rem;
+}
+
+.approvalTxLink {
+  color: #2563eb;
+  text-decoration: none;
+  font-weight: 600;
+  border: 1px solid #c9dbff;
+  border-radius: 8px;
+  background: #f3f8ff;
+  padding: 0.2rem 0.42rem;
+  white-space: nowrap;
+}
+
+.approvalTxLink:hover {
+  text-decoration: underline;
+}
+
+.approvalTxRow {
+  margin: 0.45rem 0 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.allowanceNote {
+  margin-top: 0.55rem;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .detailView {

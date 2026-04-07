@@ -1,4 +1,4 @@
-import { AssetType, Side } from '@polymarket/clob-client';
+import { AssetType, OrderType, Side } from '@polymarket/clob-client';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -7,7 +7,7 @@ import { createPublicClient, erc20Abi, http, maxUint256 } from 'viem';
 import { polygon } from 'viem/chains';
 import { useAccount, useWalletClient, useWriteContract } from 'wagmi';
 
-import { createL1Client, createL2Client, getOrderBook } from '../lib/clob';
+import { createL1Client, createL2Client, getOrderBook, getPrice } from '../lib/clob';
 import { fetchEventMarketsBySlug, fetchSpecificTutorialMarkets, getMarket } from '../lib/gamma';
 import type { Market, OrderBook } from '../types/polymarket';
 import styles from '../styles/Home.module.css';
@@ -95,6 +95,21 @@ function renderInlineCode(text: string): ReactNode {
     : <span key={`text-${index}`}>{part}</span>));
 }
 
+function formatAllowanceError(error: unknown): string {
+  const raw = String(error ?? '');
+  const normalized = raw.toLowerCase();
+  if (normalized.includes('user rejected') || normalized.includes('user denied')) {
+    return 'Allowance cancelled: transaction was rejected in your wallet.';
+  }
+  if (normalized.includes('insufficient funds')) {
+    return 'Allowance failed: insufficient MATIC for gas on Polygon.';
+  }
+  if (normalized.includes('chain') || normalized.includes('network')) {
+    return 'Allowance failed: please switch to Polygon and try again.';
+  }
+  return 'Allowance failed: please try again.';
+}
+
 const DOCS_LINKS = {
   gammaEvents: 'https://docs.polymarket.com/developers/gamma-markets-api/get-events',
   auth: 'https://docs.polymarket.com/api-reference/authentication',
@@ -163,12 +178,12 @@ export function TutorialFlow() {
     passphrase: false,
   });
   const [allowanceNote, setAllowanceNote] = useState("Click 'Set Allowances' to approve Polymarket contracts.");
-  const [allowanceHash, setAllowanceHash] = useState<string>('');
   const [allowanceReady, setAllowanceReady] = useState(false);
   const [isSettingAllowance, setIsSettingAllowance] = useState(false);
   const [allowanceProgress, setAllowanceProgress] = useState('');
-  const [allowanceTxs, setAllowanceTxs] = useState<Array<{ label: string; hash: string }>>([]);
+  const [allowanceTxs, setAllowanceTxs] = useState<Array<{ label: string; hash: string; help: string }>>([]);
   const [tradeAmountUsdc, setTradeAmountUsdc] = useState('10');
+  const [lastOrderIntent, setLastOrderIntent] = useState<{ usdcAmount: number; estimatedShares: number; price: number } | null>(null);
   const [orderResponse, setOrderResponse] = useState<any>(null);
   const [orderError, setOrderError] = useState('');
   const [orderErrorDetails, setOrderErrorDetails] = useState('');
@@ -208,7 +223,6 @@ export function TutorialFlow() {
 
   const orderId = (orderResponse?.orderID as string | undefined) ?? (orderResponse?.orderId as string | undefined) ?? '';
   const executedStatus = String(orderResponse?.status ?? 'pending');
-  const executedUsdc = Number(orderResponse?.makingAmount ?? Number.NaN);
   const executedShares = Number(orderResponse?.takingAmount ?? Number.NaN);
   const executedTxHash =
     Array.isArray(orderResponse?.transactionsHashes) && typeof orderResponse.transactionsHashes[0] === 'string'
@@ -231,11 +245,11 @@ export function TutorialFlow() {
     ? selectedMarket.outcomes.findIndex((outcome) => outcome.toLowerCase() === selectedOutcome)
     : -1;
   const selectedOutcomeLabel = selectedOutcome ? selectedOutcome.toUpperCase() : 'Select Yes/No';
-  const marketOrderPrice =
-    Number(orderBook?.asks?.[0]?.price ?? 0) ||
+  const referenceOutcomePrice =
     Number(selectedMarket?.outcomePrices?.[selectedOutcomeIndex] ?? 0) ||
+    Number(orderBook?.asks?.[0]?.price ?? 0) ||
     0;
-  const estimatedShares = marketOrderPrice > 0 ? numericUsdcAmount / marketOrderPrice : 0;
+  const estimatedShares = referenceOutcomePrice > 0 ? numericUsdcAmount / referenceOutcomePrice : 0;
   const stepCompletion: Record<number, boolean> = {
     1: completed.step1,
     2: completed.step2,
@@ -268,7 +282,7 @@ export function TutorialFlow() {
     if (activeStep === 3) {
       return canAdvanceStep
         ? 'Outcome selected. Continue to Step 4.'
-        : 'To complete Step 3, explicitly select either a YES or NO outcome.';
+        : 'To complete Step 3, connect your wallet, derive API keys, and make sure a YES or NO outcome is selected.';
     }
     if (activeStep === 4) {
       return canAdvanceStep
@@ -467,16 +481,49 @@ export function TutorialFlow() {
   }, [selectedMarketId]);
 
   const placeOrder = async () => {
-    if (!walletClient || !creds || !activeTokenId || marketOrderPrice <= 0 || estimatedShares <= 0) return;
+    if (!walletClient || !creds || !activeTokenId || referenceOutcomePrice <= 0 || numericUsdcAmount <= 0) return;
+    console.log('[TutorialFlow][Step5] Preparing BUY order input.', {
+      tradeAmountUsdc,
+      numericUsdcAmount,
+      referenceOutcomePrice,
+      estimatedShares,
+      activeTokenId,
+      selectedOutcome,
+      selectedMarketId,
+    });
     try {
+      const liveQuote = await getPrice(activeTokenId, 'BUY');
+      const quotedBuyPrice = Number(liveQuote.price ?? 0);
+      const executionPrice = Number.isFinite(quotedBuyPrice) && quotedBuyPrice > 0 ? quotedBuyPrice : referenceOutcomePrice;
+      const executionShares = executionPrice > 0 ? numericUsdcAmount / executionPrice : 0;
+      console.log('[TutorialFlow][Step5] Live BUY quote resolved.', {
+        liveQuotePrice: quotedBuyPrice,
+        executionPrice,
+        executionShares,
+      });
+      if (!Number.isFinite(executionPrice) || executionPrice <= 0 || !Number.isFinite(executionShares) || executionShares <= 0) {
+        throw new Error('Could not derive a valid executable quote for this market right now.');
+      }
+      setLastOrderIntent({
+        usdcAmount: numericUsdcAmount,
+        estimatedShares: executionShares,
+        price: executionPrice,
+      });
       setOrderError('');
       setOrderErrorDetails('');
       const l2Client = createL2Client(walletClient, creds);
-      const result = await l2Client.createAndPostOrder({
+      const result = await l2Client.createAndPostMarketOrder({
         tokenID: activeTokenId,
         side: Side.BUY,
-        price: marketOrderPrice,
-        size: estimatedShares,
+        amount: numericUsdcAmount,
+      }, undefined, OrderType.FAK);
+      console.log('[TutorialFlow][Step5] Raw order response.', {
+        orderID: (result as any).orderID ?? (result as any).orderId,
+        status: (result as any).status,
+        success: (result as any).success,
+        makingAmount: (result as any).makingAmount,
+        takingAmount: (result as any).takingAmount,
+        transactionsHashes: (result as any).transactionsHashes,
       });
 
       const responseError = String((result as { error?: unknown }).error ?? '');
@@ -742,7 +789,7 @@ export function TutorialFlow() {
             nextStepHint={nextStepHint}
             onNextStep={onNextStepClick}
           >
-            <p>Before trading, approve the exchange to spend USDC.e. This is a one-time DEX approval on Polygon.</p>
+            <p>Before trading, you must complete multiple USDC.e and CTF approvals across required Polymarket contracts. For a typical user, this is a one-time setup per wallet on Polygon (unless approvals are revoked), and all approvals must finish before moving to the next step.</p>
             <p><strong>Note:</strong> You need USDC.e on Polygon to complete this step onchain.</p>
             <button
               className={styles.primaryButton}
@@ -778,6 +825,7 @@ export function TutorialFlow() {
                     const approvals = [
                       {
                         label: 'USDC.e → Exchange',
+                        help: 'Allows the primary CLOB exchange contract to spend your USDC.e for BUY orders.',
                         run: async () =>
                           writeContractAsync({
                             address: USDC_E_ADDRESS,
@@ -789,6 +837,7 @@ export function TutorialFlow() {
                       },
                       {
                         label: 'CTF → Exchange',
+                        help: 'Allows the primary CLOB exchange contract to transfer your CTF outcome tokens when required.',
                         run: async () =>
                           writeContractAsync({
                             address: CTF_ADDRESS,
@@ -800,6 +849,7 @@ export function TutorialFlow() {
                       },
                       {
                         label: 'USDC.e → Neg-Risk Exchange',
+                        help: 'Allows the neg-risk exchange path to spend USDC.e for markets routed through that contract.',
                         run: async () =>
                           writeContractAsync({
                             address: USDC_E_ADDRESS,
@@ -811,6 +861,7 @@ export function TutorialFlow() {
                       },
                       {
                         label: 'CTF → Neg-Risk Exchange',
+                        help: 'Allows the neg-risk exchange path to transfer your CTF tokens when that route is used.',
                         run: async () =>
                           writeContractAsync({
                             address: CTF_ADDRESS,
@@ -822,6 +873,7 @@ export function TutorialFlow() {
                       },
                       {
                         label: 'USDC.e → Neg-Risk Adapter',
+                        help: 'Allows the neg-risk adapter contract to spend USDC.e for adapter-based flows.',
                         run: async () =>
                           writeContractAsync({
                             address: USDC_E_ADDRESS,
@@ -833,6 +885,7 @@ export function TutorialFlow() {
                       },
                       {
                         label: 'CTF → Neg-Risk Adapter',
+                        help: 'Allows the neg-risk adapter contract to transfer your CTF tokens for adapter settlements.',
                         run: async () =>
                           writeContractAsync({
                             address: CTF_ADDRESS,
@@ -848,8 +901,7 @@ export function TutorialFlow() {
                       const current = approvals[i];
                       setAllowanceProgress(`Approval ${i + 1}/6: ${current.label}`);
                       const hash = await current.run();
-                      setAllowanceHash(hash);
-                      setAllowanceTxs((previous) => [...previous, { label: current.label, hash }]);
+                      setAllowanceTxs((previous) => [...previous, { label: current.label, hash, help: current.help }]);
                       await polygonReadClient.waitForTransactionReceipt({
                         hash,
                         pollingInterval: 2000,
@@ -865,7 +917,7 @@ export function TutorialFlow() {
                     console.error('[TutorialFlow][Step5] Allowance update failed.', { error });
                     setAllowanceReady(false);
                     setAllowanceProgress('');
-                    setAllowanceNote(`Allowance failed: ${String(error)}`);
+                    setAllowanceNote(formatAllowanceError(error));
                   } finally {
                     setIsSettingAllowance(false);
                   }
@@ -876,17 +928,21 @@ export function TutorialFlow() {
             >
               {allowanceReady ? 'Allowances ✓' : isSettingAllowance ? 'Setting Allowances...' : 'Set Allowances'}
             </button>
-            <p>{allowanceNote}</p>
+            <p className={styles.allowanceNote}>{allowanceNote}</p>
             {allowanceProgress ? <p className={styles.pollingText}>{allowanceProgress}</p> : null}
             {allowanceTxs.map((tx) => (
-              <p key={tx.hash}>
-                <strong>{tx.label}:</strong>{' '}
-                <a href={`https://polygonscan.com/tx/${tx.hash}`} rel="noreferrer" target="_blank">
-                  {tx.hash}
+              <p className={styles.approvalTxRow} key={tx.hash}>
+                <strong>{tx.label}:</strong>
+                {' '}
+                <a className={styles.approvalTxLink} href={`https://polygonscan.com/tx/${tx.hash}`} rel="noreferrer" target="_blank">
+                  Tx {`${tx.hash.slice(0, 8)}...${tx.hash.slice(-6)}`} ↗
                 </a>
+                {' '}
+                <span className={styles.inlineHelpTerm} data-help={tx.help} tabIndex={0} title={tx.help}>
+                  i
+                </span>
               </p>
             ))}
-            {allowanceHash ? <a href={`https://polygonscan.com/tx/${allowanceHash}`} rel="noreferrer" target="_blank">View transaction on Polygonscan</a> : null}
           </StepCard>
 
           <StepCard
@@ -933,10 +989,10 @@ export function TutorialFlow() {
                 />
               </div>
             </div>
-            <p><strong>Estimated shares:</strong> {estimatedShares > 0 ? estimatedShares.toFixed(4) : 'n/a'} (based on current price)</p>
+            <p><strong>Estimated shares:</strong> {estimatedShares > 0 ? estimatedShares.toFixed(4) : 'n/a'} (based on selected outcome price)</p>
             <button
               className={styles.primaryButton}
-              disabled={marketOrderPrice <= 0 || numericUsdcAmount <= 0}
+              disabled={referenceOutcomePrice <= 0 || numericUsdcAmount <= 0}
               onClick={() => void placeOrder()}
               type="button"
             >
@@ -1130,8 +1186,19 @@ export function TutorialFlow() {
               <p><strong>Market:</strong> {selectedMarket?.question ?? 'n/a'}</p>
               <p><strong>Outcome:</strong> {selectedOutcomeLabel}</p>
               <p><strong>Status:</strong> {executedStatus}</p>
-              <p><strong>Filled:</strong> {Number.isFinite(executedShares) ? `${executedShares.toFixed(4)} shares` : 'n/a'}</p>
-              <p><strong>Spent:</strong> {Number.isFinite(executedUsdc) ? `${executedUsdc.toFixed(4)} USDC.e` : 'n/a'}</p>
+              <p>
+                <strong>Requested Spend:</strong>{' '}
+                {lastOrderIntent && Number.isFinite(lastOrderIntent.usdcAmount)
+                  ? `${lastOrderIntent.usdcAmount.toFixed(4)} USDC.e`
+                  : 'n/a'}
+              </p>
+              <p>
+                <strong>Estimated Shares (at submit):</strong>{' '}
+                {lastOrderIntent && Number.isFinite(lastOrderIntent.estimatedShares)
+                  ? `${lastOrderIntent.estimatedShares.toFixed(4)} shares @ ${(lastOrderIntent.price * 100).toFixed(2)}c`
+                  : 'n/a'}
+              </p>
+              <p><strong>Matched Shares:</strong> {Number.isFinite(executedShares) ? `${executedShares.toFixed(4)} shares` : 'n/a'}</p>
               <p><strong>Order ID:</strong> {orderId || 'n/a'}</p>
             </div>
             {executedTxHash ? (
