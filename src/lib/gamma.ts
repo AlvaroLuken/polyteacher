@@ -2,7 +2,7 @@ import type { GammaMarket, Market } from '../types/polymarket';
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const TUTORIAL_EVENT_SLUGS = [
-  'us-x-iran-ceasefire-by',
+  'the-masters-winner-2026',
   'republican-presidential-nominee-2028',
   'natural-disaster-in-2026',
 ];

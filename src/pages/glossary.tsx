@@ -184,7 +184,7 @@ const GlossaryPage: NextPage = () => {
                     </li>
                     <li>
                       <strong>CLOB API:</strong> Used for authenticated trading actions. In this app it derives trading
-                      credentials (Step 3), fetches quotes, and submits orders.
+                      credentials (Step 3), fetches quotes, and submits BUY market orders from USDC.e notional input.
                     </li>
                     <li>
                       <strong>Data API:</strong> Used for portfolio/position reads after trading. In this app it powers

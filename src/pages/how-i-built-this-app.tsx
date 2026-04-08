@@ -309,7 +309,7 @@ const HowIBuiltThisApp: NextPage = () => {
                 <li>Select specific market + outcome (Gamma)</li>
                 <li>Derive CLOB credentials from wallet signature (CLOB L1 auth)</li>
                 <li>Set on-chain approvals on Polygon (ERC20 + ERC1155)</li>
-                <li>Submit a BUY order via CLOB (L2 authenticated request)</li>
+                <li>Submit a BUY market order via CLOB using USDC.e notional input (L2 authenticated request)</li>
                 <li>Read position from Data API to confirm the result</li>
               </ul>
             </section>
@@ -387,28 +387,30 @@ const creds = await l1Client.createOrDeriveApiKey();`}</code>
             <section>
               <h2>5) Order Execution: First Trade</h2>
               <p>
-                I keep order entry simple: user enters USDC.e amount, and the app computes estimated shares from
-                current outcome price. Then I submit a BUY order via the L2 client:
+                I keep order entry simple: user enters USDC.e amount, and the app computes estimated shares from the
+                current outcome price. Then I submit a BUY market order via the L2 client using USDC.e amount as
+                notional:
               </p>
               <pre className={styles.codeBlock}>
                 <code>{`const l2Client = createL2Client(walletClient, creds);
-await l2Client.createAndPostOrder({
+await l2Client.createAndPostMarketOrder({
   tokenID: activeTokenId,
   side: Side.BUY,
-  price: marketOrderPrice,
-  size: estimatedShares,
-});`}</code>
+  amount: numericUsdcAmount,
+}, undefined, OrderType.FAK);`}</code>
               </pre>
               <p>
                 Why this matters: first-time developers usually overcomplicate order sizing. Framing it as &quot;how much do
-                you want to spend?&quot; is easier to reason about and maps cleanly to user intent.
+                you want to spend?&quot; is easier to reason about and maps cleanly to user intent. FAK behavior also avoids
+                leaving unexpected resting orders when only partial liquidity is available.
               </p>
             </section>
 
             <section>
               <h2>6) Confirming Trade Outcome</h2>
               <p>
-                After submission, I show a human-readable summary (status, filled shares, USDC.e spent, and tx link)
+                After submission, I show a human-readable summary (requested spend, estimated shares, matched shares,
+                status, and tx link)
                 instead of raw JSON. I also dispatch an in-app event to refresh positions:
               </p>
               <pre className={styles.codeBlock}>
@@ -427,7 +429,7 @@ await l2Client.createAndPostOrder({
                 <li>Add Gamma proxy routes and render event/market selection UI.</li>
                 <li>Implement <code>createOrDeriveApiKey()</code> and persist creds in app state.</li>
                 <li>Add allowance transactions + on-chain verification.</li>
-                <li>Wire <code>createAndPostOrder()</code> with clean error handling.</li>
+                <li>Wire <code>createAndPostMarketOrder()</code> with clean error handling.</li>
                 <li>Add Data API positions for post-trade confirmation and confidence.</li>
               </ul>
             </section>

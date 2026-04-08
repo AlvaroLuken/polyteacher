@@ -33,7 +33,7 @@ The goal is educational clarity: each step explicitly calls out **which API is u
 
 - **CLOB API L1 + L2 Auth**
   - **L1 (wallet signing)**: derive API credentials via `createOrDeriveApiKey()`.
-  - **L2 (API credentials)**: create/post orders via `createAndPostOrder()`.
+  - **L2 (API credentials)**: submit BUY market orders via `createAndPostMarketOrder()`.
   - Reason: order placement requires authenticated CLOB flow.
 
 - **Polymarket Data API** (`https://data-api.polymarket.com`)
@@ -95,15 +95,16 @@ npm run dev
   2. Derive credentials via `createOrDeriveApiKey()` (L1)
   3. Set Polygon approvals (`approve` + `setApprovalForAll`) for Exchange / Neg-Risk contracts
   4. Build L2 client with derived credentials
-  5. Create and post BUY order via `createAndPostOrder()` (L2)
+  5. Create and post BUY market order via `createAndPostMarketOrder()` (L2) using USDC.e notional input
 - **Why L1 then L2**: wallet establishes trust once; API credentials execute trades efficiently
 
 ### 4) Confirmation + Position Refresh
 
 - Step 5 opens a completion modal with:
   - status
-  - filled shares
-  - USDC.e spent
+  - requested spend (USDC.e)
+  - estimated shares at submit
+  - matched shares
   - order id
   - Polygonscan link
 - App dispatches `polyteacher:trade-executed` and refreshes Data API position snapshot (`/api/data/positions`)
