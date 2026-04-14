@@ -2,7 +2,7 @@ import type { GammaMarket, Market } from '../types/polymarket';
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
 const TUTORIAL_EVENT_SLUGS = [
-  'the-masters-winner-2026',
+  '2026-fifa-world-cup-winner-595',
   'republican-presidential-nominee-2028',
   'natural-disaster-in-2026',
 ];
