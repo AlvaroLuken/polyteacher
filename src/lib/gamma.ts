@@ -1,11 +1,14 @@
 import type { GammaMarket, Market } from '../types/polymarket';
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
-const TUTORIAL_EVENT_SLUGS = [
+const LEGACY_TUTORIAL_EVENT_SLUGS = [
   '2026-fifa-world-cup-winner-595',
   'republican-presidential-nominee-2028',
   'natural-disaster-in-2026',
 ];
+const V2_TUTORIAL_EVENT_IDS = [73106, 79831];
+
+export type TutorialFlowVersion = 'legacy' | 'v2';
 
 interface GammaEvent {
   slug?: string;
@@ -124,6 +127,22 @@ async function fetchEventBySlug(slug: string): Promise<GammaEvent | null> {
   return event;
 }
 
+async function fetchEventById(eventId: number): Promise<GammaEvent | null> {
+  const url = `${GAMMA_BASE}/events/${eventId}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    console.error('[Gamma API] Event fetch failed.', { eventId, status: res.status });
+    return null;
+  }
+  const event = (await res.json()) as GammaEvent;
+  console.log('[Gamma API] Event fetched by id.', {
+    eventId,
+    found: Boolean(event),
+    marketCount: event?.markets?.length ?? 0,
+  });
+  return event;
+}
+
 function pickRepresentativeMarket(event: GammaEvent): Market | null {
   const markets = (event.markets ?? [])
     .filter((market) => market.active && !market.closed)
@@ -212,9 +231,9 @@ export async function fetchTutorialMarkets(limit = 6): Promise<Market[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export async function fetchSpecificTutorialMarkets(): Promise<Market[]> {
+export async function fetchSpecificTutorialMarkets(flowVersion: TutorialFlowVersion = 'legacy'): Promise<Market[]> {
   if (typeof window !== 'undefined') {
-    const res = await fetch('/api/gamma/markets?preset=specific');
+    const res = await fetch(`/api/gamma/markets?preset=specific&flow=${encodeURIComponent(flowVersion)}`);
     const contentType = res.headers.get('content-type') ?? '';
     if (!res.ok) {
       const body = await res.text();
@@ -234,13 +253,17 @@ export async function fetchSpecificTutorialMarkets(): Promise<Market[]> {
     return Array.isArray(data) ? data : [];
   }
 
-  const events = await Promise.allSettled(TUTORIAL_EVENT_SLUGS.map((slug) => fetchEventBySlug(slug)));
+  const events = flowVersion === 'v2'
+    ? await Promise.allSettled(V2_TUTORIAL_EVENT_IDS.map((eventId) => fetchEventById(eventId)))
+    : await Promise.allSettled(LEGACY_TUTORIAL_EVENT_SLUGS.map((slug) => fetchEventBySlug(slug)));
   const resolvedEvents = events.map((result, index) => {
     if (result.status === 'fulfilled') {
       return result.value;
     }
     console.error('[Gamma API] Failed tutorial slug fetch.', {
-      slug: TUTORIAL_EVENT_SLUGS[index],
+      source: flowVersion === 'v2'
+        ? `eventId=${V2_TUTORIAL_EVENT_IDS[index]}`
+        : `slug=${LEGACY_TUTORIAL_EVENT_SLUGS[index]}`,
       reason: String(result.reason),
     });
     return null;

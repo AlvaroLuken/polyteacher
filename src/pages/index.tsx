@@ -8,12 +8,17 @@ import { polygon } from 'viem/chains';
 import { useAccount, useWalletClient } from 'wagmi';
 
 import { TutorialFlow } from '../components/TutorialFlow';
+import { POLYMARKET_CONTRACTS, type TradingFlowVersion } from '../lib/clob';
 import styles from '../styles/Home.module.css';
 
 const POLYGON_RPC_URL = process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://polygon-rpc.com';
-const USDC_E_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as const;
-const INTRO_VIDEO_ID = 'd0cUEKJAa7o';
-const INTRO_VIDEO_STORAGE_KEY = 'polyteacher:intro-video-complete-v1';
+const COLLATERAL_ADDRESS = POLYMARKET_CONTRACTS.collateral as `0x${string}`;
+const USDC_E_ADDRESS = POLYMARKET_CONTRACTS.usdcE as `0x${string}`;
+const INTRO_VIDEO_BY_FLOW: Record<TradingFlowVersion, string> = {
+  legacy: 'd0cUEKJAa7o',
+  v2: 'wGl0BpRHJeg',
+};
+const INTRO_VIDEO_STORAGE_PREFIX = 'polyteacher:intro-video-complete:';
 
 type PositionSnapshot = {
   title?: string;
@@ -42,10 +47,20 @@ const Home: NextPage = () => {
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [isIntroVideoEnded, setIsIntroVideoEnded] = useState(false);
   const [isIntroPlayerReady, setIsIntroPlayerReady] = useState(false);
+  const [selectedFlowVersion, setSelectedFlowVersion] = useState<TradingFlowVersion | null>(null);
+  const [flowDraftVersion, setFlowDraftVersion] = useState<TradingFlowVersion>('v2');
   const introPlayerRef = useRef<any>(null);
+  const activeIntroVideoId = selectedFlowVersion ? INTRO_VIDEO_BY_FLOW[selectedFlowVersion] : null;
+  const activeIntroCompletionKey = activeIntroVideoId ? `${INTRO_VIDEO_STORAGE_PREFIX}${activeIntroVideoId}` : null;
 
   useEffect(() => {
     if (!balanceAddress) {
+      setIsUsdcLoading(false);
+      setIsUsdcError(false);
+      setUsdcDisplayRaw(null);
+      return;
+    }
+    if (!selectedFlowVersion) {
       setIsUsdcLoading(false);
       setIsUsdcError(false);
       setUsdcDisplayRaw(null);
@@ -55,9 +70,10 @@ const Home: NextPage = () => {
     let active = true;
     setIsUsdcLoading(true);
     setIsUsdcError(false);
+    const balanceTokenAddress = selectedFlowVersion === 'legacy' ? USDC_E_ADDRESS : COLLATERAL_ADDRESS;
     void polygonReadClient
       .readContract({
-        address: USDC_E_ADDRESS,
+        address: balanceTokenAddress,
         abi: erc20Abi,
         functionName: 'balanceOf',
         args: [balanceAddress],
@@ -80,7 +96,7 @@ const Home: NextPage = () => {
     return () => {
       active = false;
     };
-  }, [balanceAddress, polygonReadClient]);
+  }, [balanceAddress, polygonReadClient, selectedFlowVersion]);
 
   useEffect(() => {
     const onTradeExecuted = () => {
@@ -93,16 +109,22 @@ const Home: NextPage = () => {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const isCompleted = window.localStorage.getItem(INTRO_VIDEO_STORAGE_KEY) === '1';
-    if (!isCompleted) {
+    if (!activeIntroVideoId) return;
+    setIsIntroVideoEnded(false);
+    setIsIntroPlayerReady(false);
+    if (typeof window === 'undefined') {
       setShowIntroModal(true);
+      return;
     }
-  }, []);
+    const isCompleted = activeIntroCompletionKey
+      ? window.localStorage.getItem(activeIntroCompletionKey) === '1'
+      : false;
+    setShowIntroModal(!isCompleted);
+  }, [activeIntroCompletionKey, activeIntroVideoId]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    if (showIntroModal) {
+    if (showIntroModal || !selectedFlowVersion) {
       document.body.style.overflow = 'hidden';
       return () => {
         document.body.style.overflow = '';
@@ -110,19 +132,23 @@ const Home: NextPage = () => {
     }
     document.body.style.overflow = '';
     return undefined;
-  }, [showIntroModal]);
+  }, [showIntroModal, selectedFlowVersion]);
 
   useEffect(() => {
-    if (!showIntroModal || typeof window === 'undefined') return;
+    if (!showIntroModal || !activeIntroVideoId || typeof window === 'undefined') return;
 
     let cancelled = false;
 
     const initPlayer = () => {
       if (cancelled) return;
       const YT = (window as any).YT;
-      if (!YT?.Player || introPlayerRef.current) return;
+      if (!YT?.Player) return;
+      if (introPlayerRef.current) {
+        introPlayerRef.current.loadVideoById(activeIntroVideoId);
+        return;
+      }
       introPlayerRef.current = new YT.Player('polyteacher-intro-player', {
-        videoId: INTRO_VIDEO_ID,
+        videoId: activeIntroVideoId,
         playerVars: {
           rel: 0,
           modestbranding: 1,
@@ -161,7 +187,7 @@ const Home: NextPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [showIntroModal]);
+  }, [activeIntroVideoId, showIntroModal]);
 
   useEffect(() => {
     if (!balanceAddress) {
@@ -261,12 +287,17 @@ const Home: NextPage = () => {
               </Link>
             </div>
             <div className={styles.topNavRight}>
+              <a className={styles.topNavTab} href="https://www.polywrap.fun/" rel="noreferrer noopener" target="_blank">
+                <span className={styles.topNavTabText}>pUSD Wrapper ↗</span>
+              </a>
               <div className={styles.topNavBalanceWrap}>
                 <div className={`${styles.topNavTab} ${styles.topNavCashTab}`}>
                   <span className={styles.topNavTabText}>Balance</span>
                   <span className={styles.topNavTabValue}>{usdcDisplay}</span>
                 </div>
-                <span className={styles.topNavBalanceTooltip}>Your USDC.e balance on Polygon</span>
+                <span className={styles.topNavBalanceTooltip}>
+                  {selectedFlowVersion === 'legacy' ? 'Your USDC.e balance on Polygon' : 'Your pUSD balance on Polygon'}
+                </span>
               </div>
               <Link className={styles.topNavTab} href="/my-positions">
                 <span className={styles.topNavTabText}>My Positions</span>
@@ -387,11 +418,52 @@ const Home: NextPage = () => {
 
           <div className={styles.pageBody}>
             <main className={styles.main} id="tutorial-root">
-              <TutorialFlow />
+              {selectedFlowVersion ? <TutorialFlow flowVersion={selectedFlowVersion} /> : null}
             </main>
           </div>
         </div>
       </div>
+      {!selectedFlowVersion ? (
+        <div className={styles.introModalOverlay} role="presentation">
+          <section
+            aria-labelledby="flow-select-title"
+            aria-modal="true"
+            className={styles.flowSelectModal}
+            role="dialog"
+          >
+            <p className={styles.flowSelectKicker}>Choose flow</p>
+            <h2 id="flow-select-title">Select version</h2>
+            <p className={styles.flowSelectLead}>
+              Pick the trading backend before starting the tutorial.
+            </p>
+            <div className={styles.flowToggleRow} role="group" aria-label="Tutorial flow version">
+              <button
+                className={`${styles.flowToggleButton} ${flowDraftVersion === 'legacy' ? styles.flowToggleButtonActive : ''}`}
+                onClick={() => setFlowDraftVersion('legacy')}
+                type="button"
+              >
+                Legacy
+              </button>
+              <button
+                className={`${styles.flowToggleButton} ${flowDraftVersion === 'v2' ? styles.flowToggleButtonActive : ''}`}
+                onClick={() => setFlowDraftVersion('v2')}
+                type="button"
+              >
+                V2
+              </button>
+            </div>
+            <button
+              className={styles.flowSelectContinue}
+              onClick={() => {
+                setSelectedFlowVersion(flowDraftVersion);
+              }}
+              type="button"
+            >
+              Continue
+            </button>
+          </section>
+        </div>
+      ) : null}
       {showIntroModal ? (
         <div className={styles.introModalOverlay} role="presentation">
           <section
@@ -417,7 +489,9 @@ const Home: NextPage = () => {
               className={styles.introEnterButton}
               disabled={!isIntroVideoEnded}
               onClick={() => {
-                window.localStorage.setItem(INTRO_VIDEO_STORAGE_KEY, '1');
+                if (typeof window !== 'undefined' && activeIntroCompletionKey) {
+                  window.localStorage.setItem(activeIntroCompletionKey, '1');
+                }
                 setShowIntroModal(false);
               }}
               type="button"

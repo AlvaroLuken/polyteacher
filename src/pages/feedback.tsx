@@ -33,6 +33,9 @@ const FeedbackPage: NextPage = () => {
               </Link>
             </div>
             <div className={homeStyles.topNavRight}>
+              <a className={homeStyles.topNavTab} href="https://www.polywrap.fun/" rel="noreferrer noopener" target="_blank">
+                <span className={homeStyles.topNavTabText}>pUSD Wrapper ↗</span>
+              </a>
               <Link className={homeStyles.topNavTab} href="/my-positions">
                 <span className={homeStyles.topNavTabText}>My Positions</span>
               </Link>
@@ -196,10 +199,11 @@ const FeedbackPage: NextPage = () => {
                 </section>
 
                 <section>
-                  <h2>4) USDC.e requirement before allowances</h2>
+                  <h2>4) Allowance step should not imply funded balance requirement</h2>
                   <p>
-                    A common uncertainty: do you need USDC.e before running approvals? In this app&apos;s flow, yes. The step
-                    is on Polygon and requires the right token context, so this prerequisite should be stated prominently.
+                    A common uncertainty: do you need pUSD before running approvals? Technically, no — approvals can be
+                    signed with zero token balance. The important requirement is collateral balance at trade execution:
+                    pUSD for V2 flow and USDC.e for legacy flow.
                   </p>
                 </section>
 
@@ -207,7 +211,7 @@ const FeedbackPage: NextPage = () => {
                   <h2>5) &quot;Set Allowances&quot; needs clearer mental model</h2>
                   <p>
                     The step can feel opaque unless users know exactly what is being approved and for which contracts.
-                    Showing the six approvals with contract roles and success verification helps reduce confusion.
+                    Showing the four approvals with contract roles and success verification helps reduce confusion.
                   </p>
                 </section>
 
@@ -217,7 +221,7 @@ const FeedbackPage: NextPage = () => {
                     <li>Add a visual event → market example before any API calls.</li>
                     <li>Rename API key section to &quot;Derive L2 credentials from wallet signature&quot;.</li>
                     <li>Show exact credential output fields immediately after auth explanation.</li>
-                    <li>Add prerequisite banner: &quot;Hold USDC.e on Polygon before Step 4&quot;.</li>
+                    <li>Clarify preflight: &quot;Approvals do not require balance; trading requires flow collateral (pUSD on V2 / USDC.e on legacy)&quot;.</li>
                     <li>List each approval target with plain-English contract purpose.</li>
                   </ul>
                 </section>

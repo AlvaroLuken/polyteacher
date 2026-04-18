@@ -1,5 +1,5 @@
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { Side } from '@polymarket/clob-client';
+import { Side } from '@polymarket/clob-client-v2';
 import type { NextPage } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -8,12 +8,12 @@ import { createPublicClient, erc20Abi, formatUnits, http } from 'viem';
 import { polygon } from 'viem/chains';
 import { useAccount, useWalletClient } from 'wagmi';
 
-import { createL1Client, createL2Client, getPrice } from '../lib/clob';
+import { POLYMARKET_CONTRACTS, createL1Client, createL2Client, getOrderBook, getPrice } from '../lib/clob';
 import homeStyles from '../styles/Home.module.css';
 import styles from '../styles/MyPositions.module.css';
 
 const POLYGON_RPC_URL = process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://polygon-rpc.com';
-const USDC_E_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as const;
+const COLLATERAL_ADDRESS = POLYMARKET_CONTRACTS.collateral as `0x${string}`;
 
 type PositionSnapshot = {
   title: string;
@@ -23,6 +23,7 @@ type PositionSnapshot = {
   icon: string;
   tokenId: string;
 };
+type VenueBadge = 'v1' | 'v2' | 'unknown';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -45,6 +46,7 @@ const MyPositionsPage: NextPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isError, setIsError] = useState(false);
   const [positions, setPositions] = useState<PositionSnapshot[]>([]);
+  const [venueByTokenId, setVenueByTokenId] = useState<Record<string, VenueBadge>>({});
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [creds, setCreds] = useState<{ key: string; secret: string; passphrase: string } | null>(null);
   const [sellingKey, setSellingKey] = useState('');
@@ -63,7 +65,7 @@ const MyPositionsPage: NextPage = () => {
     setIsUsdcError(false);
     void polygonReadClient
       .readContract({
-        address: USDC_E_ADDRESS,
+        address: COLLATERAL_ADDRESS,
         abi: erc20Abi,
         functionName: 'balanceOf',
         args: [balanceAddress],
@@ -320,6 +322,41 @@ const MyPositionsPage: NextPage = () => {
     };
   }, [fetchPositions, balanceAddress]);
 
+  useEffect(() => {
+    const uniqueTokenIds = Array.from(new Set(positions.map((position) => position.tokenId).filter((tokenId) => tokenId.length > 0)));
+    if (uniqueTokenIds.length === 0) {
+      setVenueByTokenId({});
+      return;
+    }
+
+    let active = true;
+    void (async () => {
+      const entries = await Promise.all(
+        uniqueTokenIds.map(async (tokenId) => {
+          try {
+            const [v2Book, legacyBook] = await Promise.all([
+              getOrderBook(tokenId, 'v2'),
+              getOrderBook(tokenId, 'legacy'),
+            ]);
+            const v2HasLiquidity = (v2Book.bids?.length ?? 0) > 0 || (v2Book.asks?.length ?? 0) > 0;
+            const legacyHasLiquidity = (legacyBook.bids?.length ?? 0) > 0 || (legacyBook.asks?.length ?? 0) > 0;
+            const venue: VenueBadge = v2HasLiquidity ? 'v2' : legacyHasLiquidity ? 'v1' : 'unknown';
+            return [tokenId, venue] as const;
+          } catch (error) {
+            console.warn('[My Positions] Venue probe failed.', { tokenId, error: String(error) });
+            return [tokenId, 'unknown' as const] as const;
+          }
+        }),
+      );
+      if (!active) return;
+      setVenueByTokenId(Object.fromEntries(entries));
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [positions]);
+
   const usdcDisplay = (() => {
     if (!balanceAddress) return 'Connect wallet';
     if (isUsdcLoading) return 'Loading...';
@@ -350,12 +387,15 @@ const MyPositionsPage: NextPage = () => {
               </Link>
             </div>
             <div className={homeStyles.topNavRight}>
+              <a className={homeStyles.topNavTab} href="https://www.polywrap.fun/" rel="noreferrer noopener" target="_blank">
+                <span className={homeStyles.topNavTabText}>pUSD Wrapper ↗</span>
+              </a>
               <div className={homeStyles.topNavBalanceWrap}>
                 <div className={`${homeStyles.topNavTab} ${homeStyles.topNavCashTab}`}>
                   <span className={homeStyles.topNavTabText}>Balance</span>
                   <span className={homeStyles.topNavTabValue}>{usdcDisplay}</span>
                 </div>
-                <span className={homeStyles.topNavBalanceTooltip}>Your USDC.e balance on Polygon</span>
+                <span className={homeStyles.topNavBalanceTooltip}>Your pUSD balance on Polygon</span>
               </div>
               <Link className={`${homeStyles.topNavTab} ${homeStyles.topNavTabActive}`} href="/my-positions">
                 <span className={homeStyles.topNavTabText}>My Positions</span>
@@ -402,6 +442,32 @@ const MyPositionsPage: NextPage = () => {
                         className={`${homeStyles.outcomeBadge} ${position.outcome.toLowerCase().includes('yes') ? homeStyles.outcomeBadgeYes : homeStyles.outcomeBadgeNo}`}
                       >
                         {position.outcome.toUpperCase()}
+                      </span>{' '}
+                      <span
+                        className={`${styles.venueBadge} ${
+                          venueByTokenId[position.tokenId] === 'v2'
+                            ? styles.venueBadgeV2
+                            : venueByTokenId[position.tokenId] === 'v1'
+                              ? styles.venueBadgeV1
+                              : styles.venueBadgeUnknown
+                        }`}
+                        data-help={
+                          venueByTokenId[position.tokenId] === 'v2'
+                            ? 'This token currently shows active orderbook liquidity on CLOB V2 (pUSD).'
+                            : venueByTokenId[position.tokenId] === 'v1'
+                              ? 'This token currently shows active orderbook liquidity on legacy CLOB (USDC.e), not V2.'
+                              : 'No active orderbook liquidity was detected on either CLOB version at this check.'
+                        }
+                        tabIndex={0}
+                        title={
+                          venueByTokenId[position.tokenId] === 'v2'
+                            ? 'This token currently shows active orderbook liquidity on CLOB V2 (pUSD).'
+                            : venueByTokenId[position.tokenId] === 'v1'
+                              ? 'This token currently shows active orderbook liquidity on legacy CLOB (USDC.e), not V2.'
+                              : 'No active orderbook liquidity was detected on either CLOB version at this check.'
+                        }
+                      >
+                        {(venueByTokenId[position.tokenId] ?? 'unknown').toUpperCase()}
                       </span>{' '}
                       | {position.size.toLocaleString(undefined, { maximumFractionDigits: 4 })} shares
                     </p>

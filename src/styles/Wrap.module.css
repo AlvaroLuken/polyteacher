@@ -1,0 +1,226 @@
+.page {
+  min-height: calc(100vh - 72px);
+  background: radial-gradient(circle at 20% 10%, #1a243b 0%, #101827 50%, #0a0f1a 100%);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.wrapperCard {
+  width: min(710px, 100%);
+  border: 1px solid #2a3040;
+  border-radius: 20px;
+  background: rgba(11, 14, 22, 0.88);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.4);
+  padding: 0.7rem;
+}
+
+.formShell {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #2a3040;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.panel {
+  background: #0d1119;
+  padding: 1rem 1.1rem 0.9rem;
+}
+
+.panelReceive {
+  border-top: 1px solid #252b3a;
+}
+
+.panelTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.panelLabel {
+  margin: 0;
+  color: #b9c0d4;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.quickActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.quickActionButton {
+  border: 1px solid #2e3547;
+  border-radius: 8px;
+  background: #121722;
+  color: #bfc6dc;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.34rem 0.52rem;
+  cursor: pointer;
+}
+
+.quickActionButton:hover {
+  background: #181f2d;
+  border-color: #414a61;
+}
+
+.panelBody {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.amountInput {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #f4f6ff;
+  font-size: 2.8rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+}
+
+.amountInput:focus {
+  outline: none;
+}
+
+.amountInput::placeholder {
+  color: #939bb3;
+}
+
+.tokenColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+
+.tokenSelector {
+  border: 1px solid #30374a;
+  border-radius: 12px;
+  background: #101624;
+  color: #f0f3ff;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.44rem 0.74rem;
+  cursor: default;
+}
+
+.tokenSelector span {
+  margin-left: 0.35rem;
+  color: #c7cde2;
+}
+
+.tokenBalance {
+  margin: 0;
+  color: #a3abc2;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.subValue {
+  margin: 0.55rem 0 0;
+  color: #9ca5bf;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.receiveValue {
+  margin: 0;
+  color: #b9c0d4;
+  font-size: 2.6rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.dividerWrap {
+  position: relative;
+  height: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.dividerButton {
+  width: 38px;
+  height: 38px;
+  margin-top: -19px;
+  border: 1px solid #30384a;
+  border-radius: 999px;
+  background: #0f1521;
+  color: #f0f4ff;
+  font-size: 1.2rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: default;
+  z-index: 2;
+}
+
+.actionRow {
+  border-top: 1px solid #252b3a;
+  background: #0e131e;
+  padding: 0.8rem 0.75rem;
+}
+
+.wrapButton {
+  width: 100%;
+  border: 1px solid #2f5f9e;
+  border-radius: 10px;
+  background: #1f4f88;
+  color: #f4f8ff;
+  font-size: 1.15rem;
+  font-weight: 700;
+  padding: 0.66rem 0.88rem;
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.wrapButton:not(:disabled) {
+  background: linear-gradient(180deg, #2a69b5 0%, #1f5698 100%);
+  border-color: #3f7bc3;
+  box-shadow: 0 0 0 1px rgba(102, 169, 255, 0.2), 0 8px 18px rgba(27, 97, 181, 0.35);
+}
+
+.wrapButton:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 0 0 1px rgba(128, 188, 255, 0.3), 0 12px 22px rgba(30, 108, 202, 0.42);
+}
+
+.wrapButton:disabled {
+  cursor: not-allowed;
+  opacity: 1;
+  background: #1a2333;
+  border-color: #2c3750;
+  color: #6f7f9d;
+  box-shadow: none;
+}
+
+.statusText {
+  margin: 0.56rem 0 0;
+  color: #cad0e1;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  word-break: break-word;
+  text-align: center;
+}
+
+.txLink {
+  display: inline-block;
+  margin-top: 0.3rem;
+  color: #9cc8ff;
+  text-decoration: none;
+  font-size: 0.82rem;
+}
+
+.txLink:hover {
+  text-decoration: underline;
+}

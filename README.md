@@ -9,7 +9,7 @@ Step-by-step tutorial app:
 1. **Explore Events**: fetch specific tutorial events from Gamma.
 2. **Choose Sub-Market**: select the exact market to trade.
 3. **Authenticate for CLOB**: derive L2 credentials from wallet signature.
-4. **Set Allowances**: run required Polygon approvals (USDC.e + CTF).
+4. **Wrap + Set Allowances**: wrap USDC.e to pUSD if needed, then run required Polygon approvals (pUSD + CTF).
 5. **Execute Trade**: submit first BUY order and review confirmation in a completion modal.
 
 The goal is educational clarity: each step explicitly calls out **which API is used and why**.
@@ -18,7 +18,7 @@ The goal is educational clarity: each step explicitly calls out **which API is u
 
 - Next.js + TypeScript
 - RainbowKit + wagmi
-- `@polymarket/clob-client` for CLOB interactions
+- `@polymarket/clob-client-v2` for CLOB V2 interactions
 - viem for chain reads/writes on Polygon
 
 ## APIs Used (and Why)
@@ -27,7 +27,7 @@ The goal is educational clarity: each step explicitly calls out **which API is u
   - Used for event discovery, event sub-markets, and market metadata refresh.
   - Reason: clean public market/event data optimized for discovery.
 
-- **CLOB API Public Endpoints** (`https://clob.polymarket.com`)
+- **CLOB API Public Endpoints** (`https://clob-v2.polymarket.com`)
   - Used for order book and live pricing.
   - Reason: market microstructure data (depth/quotes) comes from CLOB.
 
@@ -39,6 +39,12 @@ The goal is educational clarity: each step explicitly calls out **which API is u
 - **Polymarket Data API** (`https://data-api.polymarket.com`)
   - Used for sidebar position snapshot after trade.
   - Reason: easiest way to show portfolio impact to the learner.
+
+## What Is pUSD?
+
+- `pUSD` (Polymarket USD) is the collateral token used by CLOB V2.
+- It is an ERC-20 on Polygon and is backed by USDC.
+- If you are API-only and only hold `USDC.e`, you typically wrap it into `pUSD` before trading.
 
 ## Local Setup
 
@@ -59,6 +65,8 @@ npm install
 ```bash
 NEXT_PUBLIC_POLYGON_RPC_URL=
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
+NEXT_PUBLIC_CLOB_BASE_URL=https://clob-v2.polymarket.com
+# Switch to https://clob.polymarket.com after mainnet V2 cutover.
 ```
 
 4. Start the app:
@@ -93,16 +101,17 @@ npm run dev
 - Step-by-step:
   1. Build L1 client from connected wallet
   2. Derive credentials via `createOrDeriveApiKey()` (L1)
-  3. Set Polygon approvals (`approve` + `setApprovalForAll`) for Exchange / Neg-Risk contracts
-  4. Build L2 client with derived credentials
-  5. Create and post BUY market order via `createAndPostMarketOrder()` (L2) using USDC.e notional input
+  3. (If needed) wrap USDC.e into pUSD via the Collateral Onramp contract
+  4. Set Polygon approvals (`approve` + `setApprovalForAll`) for Exchange / Neg-Risk contracts
+  5. Build L2 client with derived credentials
+  6. Create and post BUY market order via `createAndPostMarketOrder()` (L2) using pUSD notional input
 - **Why L1 then L2**: wallet establishes trust once; API credentials execute trades efficiently
 
 ### 4) Confirmation + Position Refresh
 
 - Step 5 opens a completion modal with:
   - status
-  - requested spend (USDC.e)
+  - requested spend (pUSD)
   - estimated shares at submit
   - matched shares
   - order id
@@ -114,7 +123,7 @@ npm run dev
 - Prioritized learning flow over advanced trading features (limit/cancel/edit).
 - Used explicit step gating and button states instead of a generalized state machine.
 - Kept API wrappers thin and readable, with route-level logging for debugging.
-- Optimized for first successful trade UX (amount-in-USDC input, clear completion modal).
+- Optimized for first successful trade UX (amount-in-pUSD input, clear completion modal).
 
 ## What I'd Improve in Developer Experience
 
@@ -136,5 +145,5 @@ npm run dev
   1. Connect wallet
   2. Select event and sub-market
   3. Derive API keys
-  4. Set allowances
+  4. Wrap to pUSD + set allowances
   5. Execute first trade and show completion modal + position update

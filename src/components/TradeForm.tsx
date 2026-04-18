@@ -1,4 +1,4 @@
-import { AssetType, OrderType, Side } from '@polymarket/clob-client';
+import { AssetType, OrderType, Side } from '@polymarket/clob-client-v2';
 import { useState } from 'react';
 import { useAccount, useWalletClient } from 'wagmi';
 
@@ -40,7 +40,7 @@ export function TradeForm({ market, onTradeComplete }: TradeFormProps) {
       console.log('[CLOB API - L1] Deriving API credentials from wallet signature.');
       const creds = await l1Client.createOrDeriveApiKey();
 
-      console.log('[CLOB API - L1] Updating collateral allowance for USDC.e.');
+      console.log('[CLOB API - L1] Updating collateral allowance for pUSD.');
       await l1Client.updateBalanceAllowance({ asset_type: AssetType.COLLATERAL });
 
       console.log('[CLOB API - L2] Creating market order payload.');
@@ -85,7 +85,7 @@ export function TradeForm({ market, onTradeComplete }: TradeFormProps) {
       </div>
 
       <label className={styles.inputLabel} htmlFor="trade-amount">
-        Amount (USDC)
+        Amount (pUSD)
       </label>
       <input
         className={styles.input}

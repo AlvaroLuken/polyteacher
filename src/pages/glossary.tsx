@@ -33,6 +33,9 @@ const GlossaryPage: NextPage = () => {
               </Link>
             </div>
             <div className={homeStyles.topNavRight}>
+              <a className={homeStyles.topNavTab} href="https://www.polywrap.fun/" rel="noreferrer noopener" target="_blank">
+                <span className={homeStyles.topNavTabText}>pUSD Wrapper ↗</span>
+              </a>
               <Link className={homeStyles.topNavTab} href="/my-positions">
                 <span className={homeStyles.topNavTabText}>My Positions</span>
               </Link>
@@ -184,7 +187,7 @@ const GlossaryPage: NextPage = () => {
                     </li>
                     <li>
                       <strong>CLOB API:</strong> Used for authenticated trading actions. In this app it derives trading
-                      credentials (Step 3), fetches quotes, and submits BUY market orders from USDC.e notional input.
+                      credentials (Step 3), fetches quotes, and submits BUY market orders from pUSD notional input.
                     </li>
                     <li>
                       <strong>Data API:</strong> Used for portfolio/position reads after trading. In this app it powers
@@ -230,20 +233,24 @@ const GlossaryPage: NextPage = () => {
                   </p>
                   <ul>
                     <li>
-                      <strong>CLOB Exchange</strong> (<code>0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E</code>): primary
-                      exchange contract used for standard order execution.
+                      <strong>CLOB Exchange V2</strong> (<code>0xE111180000d2663C0091e4f400237545B87B996B</code>): primary
+                      exchange contract used for standard order execution in CLOB V2.
                     </li>
                     <li>
-                      <strong>Neg-Risk Exchange</strong> (<code>0xC5d563A36AE78145C45a50134d48A1215220f80a</code>): exchange
-                      path used for negative-risk style markets.
+                      <strong>Neg-Risk Exchange V2</strong> (<code>0xe2222d279d744050d28e00520010520000310F59</code>): exchange
+                      path used for negative-risk style markets in CLOB V2.
                     </li>
                     <li>
-                      <strong>Neg-Risk Adapter</strong> (<code>0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296</code>): adapter
-                      contract supporting negative-risk routing and token flow.
+                      <strong>Neg-Risk Adapter</strong> (<code>0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296</code>): adapter route
+                      still used in some negative-risk settlement paths.
                     </li>
                     <li>
-                      <strong>What is approved:</strong> USDC.e uses ERC20 <code>approve</code>, and CTF positions use
+                      <strong>What is approved:</strong> pUSD uses ERC20 <code>approve</code>, and CTF positions use
                       ERC1155 <code>setApprovalForAll</code>, for each of the contracts above.
+                    </li>
+                    <li>
+                      <strong>What pUSD is:</strong> pUSD is Polymarket&apos;s collateral token for CLOB V2. It is backed by
+                      USDC on Polygon; if you only hold USDC.e, wrap to pUSD before API-only trading.
                     </li>
                   </ul>
                 </section>

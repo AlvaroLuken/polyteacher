@@ -1,13 +1,20 @@
-import { AssetType, OrderType, Side } from '@polymarket/clob-client';
+import { OrderType, Side } from '@polymarket/clob-client-v2';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { createPublicClient, erc20Abi, http, maxUint256 } from 'viem';
+import { createPublicClient, erc20Abi, formatUnits, http, maxUint256 } from 'viem';
 import { polygon } from 'viem/chains';
 import { useAccount, useWalletClient, useWriteContract } from 'wagmi';
 
-import { createL1Client, createL2Client, getOrderBook, getPrice } from '../lib/clob';
+import {
+  POLYMARKET_CONTRACTS,
+  createL1Client,
+  createL2Client,
+  getOrderBook,
+  getPrice,
+  type TradingFlowVersion,
+} from '../lib/clob';
 import { fetchEventMarketsBySlug, fetchSpecificTutorialMarkets, getMarket } from '../lib/gamma';
 import type { Market, OrderBook } from '../types/polymarket';
 import styles from '../styles/Home.module.css';
@@ -15,11 +22,12 @@ import styles from '../styles/Home.module.css';
 type Credentials = { key: string; secret: string; passphrase: string };
 const POLYGON_CHAIN_ID = 137;
 const POLYGON_RPC_URL = process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://polygon-rpc.com';
-const USDC_E_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174';
-const CTF_ADDRESS = '0x4D97DCd97eC945f40cF65F87097ACe5EA0476045';
-const CLOB_EXCHANGE_ADDRESS = '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E';
-const NEG_RISK_EXCHANGE_ADDRESS = '0xC5d563A36AE78145C45a50134d48A1215220f80a';
-const NEG_RISK_ADAPTER_ADDRESS = '0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296';
+const COLLATERAL_ADDRESS = POLYMARKET_CONTRACTS.collateral as `0x${string}`;
+const USDC_E_ADDRESS = POLYMARKET_CONTRACTS.usdcE as `0x${string}`;
+const CTF_ADDRESS = POLYMARKET_CONTRACTS.conditionalTokens as `0x${string}`;
+const EXCHANGE_ADDRESS = POLYMARKET_CONTRACTS.exchange as `0x${string}`;
+const NEG_RISK_EXCHANGE_ADDRESS = POLYMARKET_CONTRACTS.negRiskExchange as `0x${string}`;
+const NEG_RISK_ADAPTER_ADDRESS = POLYMARKET_CONTRACTS.negRiskAdapter as `0x${string}`;
 const ERC1155_ABI = [
   {
     name: 'setApprovalForAll',
@@ -42,7 +50,6 @@ const ERC1155_ABI = [
     outputs: [{ type: 'bool' }],
   },
 ] as const;
-
 const mask = (value: string, reveal: boolean) => (reveal ? value : `${value.slice(0, 4)}••••••${value.slice(-4)}`);
 const toCentLabel = (value: string | number | undefined) => {
   const cents = (Number(value ?? 0) || 0) * 100;
@@ -74,6 +81,24 @@ const toProbabilityValue = (market: Market) => {
   const yesPrice = Number(yesPriceRaw ?? 0);
   return Number.isFinite(yesPrice) ? yesPrice : 0;
 };
+const getExecutableAskNotional = (book: OrderBook) => (book.asks ?? []).reduce((total, level) => {
+  const price = Number(level.price ?? 0);
+  const size = Number(level.size ?? 0);
+  if (!Number.isFinite(price) || !Number.isFinite(size) || price <= 0 || size <= 0) return total;
+  return total + (price * size);
+}, 0);
+const LEGACY_CLOB_BASE = 'https://clob.polymarket.com';
+async function getLegacyOrderBook(tokenId: string): Promise<OrderBook> {
+  const response = await fetch(`${LEGACY_CLOB_BASE}/book?token_id=${tokenId}`);
+  const data = (await response.json()) as OrderBook;
+  return {
+    bids: data.bids ?? [],
+    asks: data.asks ?? [],
+  };
+}
+const wait = (ms: number) => new Promise((resolve) => {
+  setTimeout(resolve, ms);
+});
 
 function tokenIdForOutcome(market: Market | null, outcome: 'yes' | 'no' | null) {
   if (!market || !outcome) return '';
@@ -108,6 +133,24 @@ function formatAllowanceError(error: unknown): string {
     return 'Allowance failed: please switch to Polygon and try again.';
   }
   return 'Allowance failed: please try again.';
+}
+
+function toInputAmount(value: bigint): string {
+  const raw = formatUnits(value, 6);
+  if (!raw.includes('.')) return raw;
+  const normalized = raw.replace(/\.?0+$/, '');
+  return normalized.length > 0 ? normalized : '0';
+}
+function toSixDecimals(value: number): number {
+  return Number(value.toFixed(6));
+}
+
+function emitTelemetry(event: string, detail: Record<string, unknown> = {}) {
+  const payload = { event, at: new Date().toISOString(), ...detail };
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('polyteacher:telemetry', { detail: payload }));
+  }
+  console.log('[PolyTeacher][Telemetry]', payload);
 }
 
 const DOCS_LINKS = {
@@ -145,14 +188,15 @@ const STEP_RECAPS = {
     kicker: 'Step 4 Complete ✅',
     title: 'Awesome! Allowances are now configured. ⛓️',
     summary:
-      'CLOB intent is API-based, but settlement is contract-based. Before execution, exchange contracts must have token permissions on-chain: USDC.e allowances for buys and conditional-token approvals for sells.',
+      'CLOB intent is API-based, but settlement is contract-based. Before execution, exchange contracts must have token permissions on-chain: pUSD allowances for buys and conditional-token approvals for sells.',
     poweredBy:
       'The key protocol checks in this phase are allowance readiness and execution validity. If permissions are missing, orders fail with balance/allowance errors. This is why production trading flows treat approvals and post-approval verification as first-class prerequisites.',
   },
 } as const;
 const ReactConfetti = dynamic(() => import('react-confetti'), { ssr: false });
 
-export function TutorialFlow() {
+export function TutorialFlow({ flowVersion }: { flowVersion: TradingFlowVersion }) {
+  const isV2Flow = flowVersion === 'v2';
   const { isConnected, address } = useAccount();
   const { data: walletClient } = useWalletClient();
   const { writeContractAsync } = useWriteContract();
@@ -167,6 +211,9 @@ export function TutorialFlow() {
 
   const [markets, setMarkets] = useState<Market[]>([]);
   const [eventMarkets, setEventMarkets] = useState<Market[]>([]);
+  const [v2LiquidityByMarketId, setV2LiquidityByMarketId] = useState<Record<string, boolean>>({});
+  const [v2OutcomeAskLiquidityByMarketId, setV2OutcomeAskLiquidityByMarketId] = useState<Record<string, { yes: boolean; no: boolean }>>({});
+  const [isCheckingV2Liquidity, setIsCheckingV2Liquidity] = useState(false);
   const [selectedEventSlug, setSelectedEventSlug] = useState('');
   const [selectedMarket, setSelectedMarket] = useState<Market | null>(null);
   const [selectedOutcome, setSelectedOutcome] = useState<'yes' | 'no' | null>(null);
@@ -182,8 +229,15 @@ export function TutorialFlow() {
   const [isSettingAllowance, setIsSettingAllowance] = useState(false);
   const [allowanceProgress, setAllowanceProgress] = useState('');
   const [allowanceTxs, setAllowanceTxs] = useState<Array<{ label: string; hash: string; help: string }>>([]);
+  const [usdcEBalance, setUsdcEBalance] = useState<bigint>(BigInt(0));
+  const [pUsdBalance, setPUsdBalance] = useState<bigint>(BigInt(0));
   const [tradeAmountUsdc, setTradeAmountUsdc] = useState('10');
-  const [lastOrderIntent, setLastOrderIntent] = useState<{ usdcAmount: number; estimatedShares: number; price: number } | null>(null);
+  const [lastOrderIntent, setLastOrderIntent] = useState<{
+    requestedPusdAmount: number;
+    submittedPusdAmount: number;
+    estimatedShares: number;
+    price: number;
+  } | null>(null);
   const [orderResponse, setOrderResponse] = useState<any>(null);
   const [orderError, setOrderError] = useState('');
   const [orderErrorDetails, setOrderErrorDetails] = useState('');
@@ -231,12 +285,19 @@ export function TutorialFlow() {
   const selectedMarketId = selectedMarket?.id ?? '';
   const yesCents = toCentLabel(selectedMarket?.outcomePrices?.[0]);
   const noCents = toCentLabel(selectedMarket?.outcomePrices?.[1]);
-  const eventMarketOptions = useMemo(
-    () =>
-      [...eventMarkets]
-        .sort((a, b) => toProbabilityValue(b) - toProbabilityValue(a))
-        .slice(0, 5),
+  const rankedEventMarkets = useMemo(
+    () => [...eventMarkets].sort((a, b) => toProbabilityValue(b) - toProbabilityValue(a)),
     [eventMarkets],
+  );
+  const topEventMarkets = useMemo(
+    () => rankedEventMarkets.slice(0, 5),
+    [rankedEventMarkets],
+  );
+  const eventMarketOptions = useMemo(
+    () => (isV2Flow
+      ? topEventMarkets.filter((market) => v2LiquidityByMarketId[market.id] === true)
+      : topEventMarkets),
+    [isV2Flow, topEventMarkets, v2LiquidityByMarketId],
   );
   const lastFocusedPollLabel = lastFocusedPollAt
     ? lastFocusedPollAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -245,6 +306,9 @@ export function TutorialFlow() {
     ? selectedMarket.outcomes.findIndex((outcome) => outcome.toLowerCase() === selectedOutcome)
     : -1;
   const selectedOutcomeLabel = selectedOutcome ? selectedOutcome.toUpperCase() : 'Select Yes/No';
+  const selectedMarketOutcomeV2AskLiquidity = selectedMarket ? v2OutcomeAskLiquidityByMarketId[selectedMarket.id] : undefined;
+  const canSelectYesOutcome = !isV2Flow || (selectedMarketOutcomeV2AskLiquidity?.yes ?? false);
+  const canSelectNoOutcome = !isV2Flow || (selectedMarketOutcomeV2AskLiquidity?.no ?? false);
   const referenceOutcomePrice =
     Number(selectedMarket?.outcomePrices?.[selectedOutcomeIndex] ?? 0) ||
     Number(orderBook?.asks?.[0]?.price ?? 0) ||
@@ -268,6 +332,7 @@ export function TutorialFlow() {
   const hasNextStep = activeStep < maxSteps;
   const nextStepNumber = hasNextStep ? activeStep + 1 : maxSteps;
   const canAdvanceStep = hasNextStep && stepCompletion[activeStep] && stepUnlock[nextStepNumber];
+  const flowCollateralLabel = isV2Flow ? 'pUSD' : 'USDC.e';
   const nextStepHint = (() => {
     if (activeStep === 1) {
       return canAdvanceStep
@@ -287,12 +352,14 @@ export function TutorialFlow() {
     if (activeStep === 4) {
       return canAdvanceStep
         ? 'Allowances set. Continue to Step 5.'
-        : 'To complete Step 4, set allowances for the Polymarket contracts.';
+        : isV2Flow
+          ? 'To complete Step 4, set allowances and, if needed, use the navbar PUSD Wrapper before trading.'
+          : 'To complete Step 4, set allowances for the legacy flow, then continue to Step 5.';
     }
     if (activeStep === 5) {
       return canAdvanceStep
         ? 'Order placed. Continue to Step 6.'
-        : 'To complete Step 5, enter the amount of USDC.e you want to spend and click "Place Order".';
+        : `To complete Step 5, enter the amount of ${flowCollateralLabel} you want to spend and click "Place Order".`;
     }
     return '';
   })();
@@ -301,6 +368,16 @@ export function TutorialFlow() {
   );
   const stepRecap = stepRecapModal ? STEP_RECAPS[stepRecapModal.from] : null;
   const canAdvanceFromLessonModal = lessonSectionsViewed.insight && lessonSectionsViewed.happened;
+  const collateralTokenLabel = isV2Flow ? 'pUSD' : 'USDC.e';
+  const hasCollateralBalance = (isV2Flow ? pUsdBalance : usdcEBalance) > BigInt(0);
+  const usdcEBalanceLabel = Number(formatUnits(usdcEBalance, 6)).toFixed(4);
+  const pUsdBalanceLabel = Number(formatUnits(pUsdBalance, 6)).toFixed(4);
+
+  const applyTradePreset = (numerator: bigint, denominator: bigint) => {
+    const activeBalance = isV2Flow ? pUsdBalance : usdcEBalance;
+    const next = denominator === BigInt(0) ? BigInt(0) : (activeBalance * numerator) / denominator;
+    setTradeAmountUsdc(toInputAmount(next));
+  };
 
   const onNextStepClick = () => {
     if (!canAdvanceStep || activeStep > 4) return;
@@ -309,7 +386,7 @@ export function TutorialFlow() {
   };
 
   const refreshSpecificMarkets = useCallback(async () => {
-    const result = await fetchSpecificTutorialMarkets();
+    const result = await fetchSpecificTutorialMarkets(flowVersion);
     if (result.length === 0) {
       setStep1Error('No markets returned. Check server logs for Gamma fetch details.');
       return false;
@@ -324,7 +401,7 @@ export function TutorialFlow() {
       return result.find((market) => market.id === previous.id) ?? previous;
     });
     return true;
-  }, []);
+  }, [flowVersion]);
 
   useEffect(() => {
     const updateViewport = () => {
@@ -338,13 +415,22 @@ export function TutorialFlow() {
   }, []);
 
   useEffect(() => {
+    if (isConnected && address) {
+      emitTelemetry('wallet_connected', { address });
+    }
+  }, [isConnected, address]);
+
+  useEffect(() => {
     if (!selectedMarket || !activeTokenId) return;
-    void getOrderBook(activeTokenId).then(setOrderBook);
-  }, [selectedMarket, activeTokenId]);
+    void getOrderBook(activeTokenId, flowVersion).then(setOrderBook);
+  }, [selectedMarket, activeTokenId, flowVersion]);
 
   useEffect(() => {
     if (!selectedEventSlug) {
       setEventMarkets([]);
+      setV2LiquidityByMarketId({});
+      setV2OutcomeAskLiquidityByMarketId({});
+      setIsCheckingV2Liquidity(false);
       setStep2SelectedMarketId('');
       setSelectedOutcome(null);
       return;
@@ -358,6 +444,9 @@ export function TutorialFlow() {
           firstQuestion: group[0]?.question ?? null,
         });
         setEventMarkets(group);
+        setV2LiquidityByMarketId({});
+        setV2OutcomeAskLiquidityByMarketId({});
+        setIsCheckingV2Liquidity(isV2Flow && group.length > 0);
         setStep2SelectedMarketId('');
         setSelectedOutcome(null);
         setSelectedMarket(null);
@@ -369,27 +458,116 @@ export function TutorialFlow() {
         });
         setStep1Error(`Failed to load markets in event: ${String(error)}`);
       });
-  }, [selectedEventSlug]);
+  }, [selectedEventSlug, isV2Flow]);
 
-  const checkAllowances = useCallback(async () => {
+  useEffect(() => {
+    if (!isV2Flow) {
+      setIsCheckingV2Liquidity(false);
+      setV2LiquidityByMarketId({});
+      setV2OutcomeAskLiquidityByMarketId({});
+      return;
+    }
+    if (topEventMarkets.length === 0) {
+      setIsCheckingV2Liquidity(false);
+      setV2LiquidityByMarketId({});
+      setV2OutcomeAskLiquidityByMarketId({});
+      return;
+    }
+
+    let active = true;
+    setIsCheckingV2Liquidity(true);
+
+    const probeV2Liquidity = async () => {
+      const entries = await Promise.all(
+        topEventMarkets.map(async (market) => {
+          const yesTokenId = market.tokens.find((token) => token.outcome.toLowerCase() === 'yes')?.tokenId ?? '';
+          const noTokenId = market.tokens.find((token) => token.outcome.toLowerCase() === 'no')?.tokenId ?? '';
+          let yesHasAsk = false;
+          let noHasAsk = false;
+          try {
+            if (yesTokenId) {
+              const yesBook = await getOrderBook(yesTokenId, flowVersion);
+              yesHasAsk = (yesBook.asks?.length ?? 0) > 0;
+            }
+            if (noTokenId) {
+              const noBook = await getOrderBook(noTokenId, flowVersion);
+              noHasAsk = (noBook.asks?.length ?? 0) > 0;
+            }
+          } catch (error) {
+            console.warn('[TutorialFlow][Step2] V2 liquidity probe failed for market.', {
+              marketId: market.id,
+              yesTokenId,
+              noTokenId,
+              error: String(error),
+            });
+          }
+          return [market.id, { tradable: yesHasAsk || noHasAsk, yesHasAsk, noHasAsk }] as const;
+        }),
+      );
+      if (!active) return;
+      const next = Object.fromEntries(entries.map(([marketId, value]) => [marketId, value.tradable])) as Record<string, boolean>;
+      const nextOutcome = Object.fromEntries(
+        entries.map(([marketId, value]) => [marketId, { yes: value.yesHasAsk, no: value.noHasAsk }]),
+      ) as Record<string, { yes: boolean; no: boolean }>;
+      setV2LiquidityByMarketId(next);
+      setV2OutcomeAskLiquidityByMarketId(nextOutcome);
+      setIsCheckingV2Liquidity(false);
+      console.log('[TutorialFlow][Step2] V2 liquidity probe complete.', {
+        checked: entries.length,
+        tradableCount: entries.filter(([, value]) => value.tradable).length,
+      });
+    };
+
+    void probeV2Liquidity();
+
+    return () => {
+      active = false;
+    };
+  }, [isV2Flow, topEventMarkets, flowVersion]);
+
+  const refreshTradingReadiness = useCallback(async () => {
     if (!address) {
+      setAllowanceReady(false);
+      setUsdcEBalance(BigInt(0));
+      setPUsdBalance(BigInt(0));
       return false;
     }
-    const [usdcToExchange, usdcToNegRisk, usdcToAdapter, ctfToExchange, ctfToNegRisk, ctfToAdapter] = await Promise.all([
+    const [
+      usdcRawBalance,
+      pUsdRawBalance,
+      collateralToExchange,
+      collateralToNegRisk,
+      collateralToAdapter,
+      ctfToExchange,
+      ctfToNegRisk,
+      ctfToAdapter,
+    ] = await Promise.all([
       polygonReadClient.readContract({
         address: USDC_E_ADDRESS,
         abi: erc20Abi,
-        functionName: 'allowance',
-        args: [address, CLOB_EXCHANGE_ADDRESS],
+        functionName: 'balanceOf',
+        args: [address],
       }) as Promise<bigint>,
       polygonReadClient.readContract({
-        address: USDC_E_ADDRESS,
+        address: COLLATERAL_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [address],
+      }) as Promise<bigint>,
+      polygonReadClient.readContract({
+        address: COLLATERAL_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [address, EXCHANGE_ADDRESS],
+      }) as Promise<bigint>,
+      polygonReadClient.readContract({
+        address: COLLATERAL_ADDRESS,
         abi: erc20Abi,
         functionName: 'allowance',
         args: [address, NEG_RISK_EXCHANGE_ADDRESS],
       }) as Promise<bigint>,
       polygonReadClient.readContract({
-        address: USDC_E_ADDRESS,
+        address: COLLATERAL_ADDRESS,
         abi: erc20Abi,
         functionName: 'allowance',
         args: [address, NEG_RISK_ADAPTER_ADDRESS],
@@ -398,7 +576,7 @@ export function TutorialFlow() {
         address: CTF_ADDRESS,
         abi: ERC1155_ABI,
         functionName: 'isApprovedForAll',
-        args: [address, CLOB_EXCHANGE_ADDRESS],
+        args: [address, EXCHANGE_ADDRESS],
       }) as Promise<boolean>,
       polygonReadClient.readContract({
         address: CTF_ADDRESS,
@@ -414,14 +592,22 @@ export function TutorialFlow() {
       }) as Promise<boolean>,
     ]);
 
+    setUsdcEBalance(usdcRawBalance);
+    setPUsdBalance(pUsdRawBalance);
+
     const allReady =
-      usdcToExchange > BigInt(0) &&
-      usdcToNegRisk > BigInt(0) &&
-      usdcToAdapter > BigInt(0) &&
+      collateralToExchange > BigInt(0) &&
+      collateralToNegRisk > BigInt(0) &&
+      collateralToAdapter > BigInt(0) &&
       ctfToExchange &&
       ctfToNegRisk &&
       ctfToAdapter;
-    console.log('[TutorialFlow][Step5] Allowance check complete.', { allReady });
+    setAllowanceReady(allReady);
+    console.log('[TutorialFlow][Step5] Trading readiness refreshed.', {
+      allReady,
+      usdcRawBalance: usdcRawBalance.toString(),
+      pUsdRawBalance: pUsdRawBalance.toString(),
+    });
     return allReady;
   }, [polygonReadClient, address]);
 
@@ -429,16 +615,15 @@ export function TutorialFlow() {
     if (!walletClient || !creds || !unlocked.step4) return;
     void (async () => {
       try {
-        const ready = await checkAllowances();
-        setAllowanceReady(ready);
+        const ready = await refreshTradingReadiness();
         setAllowanceNote(ready ? '✓ All allowances set' : "Click 'Set Allowances' to approve Polymarket contracts.");
       } catch (error) {
         console.error('[TutorialFlow][Step5] Allowance check failed.', { error });
         setAllowanceReady(false);
-        setAllowanceNote(`Allowance failed: ${String(error)}`);
+        setAllowanceNote('Allowance check failed: refresh wallet and try again.');
       }
     })();
-  }, [walletClient, creds, unlocked.step4, checkAllowances]);
+  }, [walletClient, creds, unlocked.step4, refreshTradingReadiness]);
 
   useEffect(() => {
     if (!selectedMarketId) {
@@ -482,40 +667,239 @@ export function TutorialFlow() {
 
   const placeOrder = async () => {
     if (!walletClient || !creds || !activeTokenId || referenceOutcomePrice <= 0 || numericUsdcAmount <= 0) return;
+    if (!hasCollateralBalance) {
+      setOrderError(
+        isV2Flow
+          ? 'pUSD balance required before trading. Open the navbar PUSD Wrapper to wrap USDC.e first.'
+          : 'USDC.e balance required before trading in legacy mode. Add USDC.e on Polygon and retry.',
+      );
+      setOrderErrorDetails('');
+      return;
+    }
+    const requestedPusdAmount = numericUsdcAmount;
+    let submittedPusdAmount = requestedPusdAmount;
+    let liveAskNotional = 0;
+    let liveBook: OrderBook = { asks: [], bids: [] };
+    let preflightReason = 'liquidity-ok';
+    let executionSnapshot:
+      | {
+        submittedPusdAmount: number;
+        pUsdBalance: string;
+        pUsdToExchangeAllowance: string;
+        pUsdToNegRiskAllowance: string;
+        pUsdToAdapterAllowance: string;
+      }
+      | null = null;
+    const submissionDebugContext = {
+      selectedMarketId,
+      selectedOutcome,
+      tokenId: activeTokenId,
+      requestedPusdAmount,
+      submittedPusdAmount: requestedPusdAmount,
+      referenceOutcomePrice,
+      bestBid,
+      bestAsk,
+      spread,
+      midpoint,
+      estimatedShares,
+      liveAskNotional: 0,
+      pUsdBalanceRaw: pUsdBalance.toString(),
+      hasCollateralBalance,
+      allowanceReady,
+      preflightReason,
+      liveTopAsks: [] as Array<{ price: string; size: string }>,
+      liveTopBids: [] as Array<{ price: string; size: string }>,
+      topAsks: (orderBook?.asks ?? []).slice(0, 3),
+      topBids: (orderBook?.bids ?? []).slice(0, 3),
+    };
     console.log('[TutorialFlow][Step5] Preparing BUY order input.', {
       tradeAmountUsdc,
-      numericUsdcAmount,
+      requestedPusdAmount,
       referenceOutcomePrice,
       estimatedShares,
       activeTokenId,
       selectedOutcome,
       selectedMarketId,
+      pUsdBalanceRaw: pUsdBalance.toString(),
+      allowanceReady,
     });
     try {
-      const liveQuote = await getPrice(activeTokenId, 'BUY');
+      if (isV2Flow) {
+        const preflightSamples: Array<{ attempt: number; askNotional: number; topAsks: Array<{ price: string; size: string }> }> = [];
+        const preflightAttempts = 3;
+        for (let attempt = 1; attempt <= preflightAttempts; attempt += 1) {
+          const sampleBook = await getOrderBook(activeTokenId, flowVersion);
+          const sampleAskNotional = getExecutableAskNotional(sampleBook);
+          preflightSamples.push({
+            attempt,
+            askNotional: sampleAskNotional,
+            topAsks: (sampleBook.asks ?? []).slice(0, 5),
+          });
+          liveBook = sampleBook;
+          liveAskNotional = sampleAskNotional;
+          if (Number.isFinite(sampleAskNotional) && sampleAskNotional > 0) {
+            break;
+          }
+          if (attempt < preflightAttempts) {
+            await wait(700);
+          }
+        }
+        if (!Number.isFinite(liveAskNotional) || liveAskNotional <= 0) {
+          let legacyBook: OrderBook = { asks: [], bids: [] };
+          let legacyCheckFailed = false;
+          try {
+            legacyBook = await getLegacyOrderBook(activeTokenId);
+          } catch (error) {
+            legacyCheckFailed = true;
+            console.warn('[TutorialFlow][Step5] Legacy CLOB liquidity probe failed.', {
+              tokenId: activeTokenId,
+              error: String(error),
+            });
+          }
+          const legacyHasBook = (legacyBook.asks?.length ?? 0) > 0 || (legacyBook.bids?.length ?? 0) > 0;
+          setOrderResponse(null);
+          setIsTradeModalOpen(false);
+          setOrderError(
+            legacyHasBook
+              ? 'This market currently has liquidity on legacy CLOB (USDC.e), not CLOB V2 (pUSD). Choose a different market/outcome for this tutorial flow.'
+              : 'No live sell orders are visible for this outcome right now, so a market buy cannot match. Try another market/outcome and retry.',
+          );
+          setOrderErrorDetails(JSON.stringify({
+            reason: legacyHasBook ? 'legacy-liquidity-detected' : 'no-ask-liquidity-preflight',
+            tokenId: activeTokenId,
+            selectedMarketId,
+            selectedOutcome,
+            preflightSamples,
+            legacyBookSummary: {
+              checkFailed: legacyCheckFailed,
+              bids: legacyBook.bids?.length ?? 0,
+              asks: legacyBook.asks?.length ?? 0,
+              topBid: legacyBook.bids?.[0] ?? null,
+              topAsk: legacyBook.asks?.[0] ?? null,
+            },
+          }, null, 2));
+          console.error('[TutorialFlow][Step5] Order blocked after liquidity preflight retries.', {
+            tokenId: activeTokenId,
+            selectedMarketId,
+            selectedOutcome,
+            requestedPusdAmount,
+            preflightSamples,
+            legacyBookSummary: {
+              checkFailed: legacyCheckFailed,
+              bids: legacyBook.bids?.length ?? 0,
+              asks: legacyBook.asks?.length ?? 0,
+            },
+          });
+          return;
+        }
+        submittedPusdAmount = Math.min(requestedPusdAmount, liveAskNotional);
+      } else {
+        const legacyBook = await getOrderBook(activeTokenId, flowVersion);
+        liveBook = legacyBook;
+        liveAskNotional = getExecutableAskNotional(legacyBook);
+        submittedPusdAmount = requestedPusdAmount;
+      }
+      Object.assign(submissionDebugContext, {
+        submittedPusdAmount,
+        liveAskNotional,
+        preflightReason,
+        liveTopAsks: (liveBook.asks ?? []).slice(0, 3),
+        liveTopBids: (liveBook.bids ?? []).slice(0, 3),
+      });
+      const [pUsdBalanceRaw, usdcBalanceRaw, pUsdToExchangeAllowanceRaw, pUsdToNegRiskAllowanceRaw, pUsdToAdapterAllowanceRaw] = await Promise.all([
+        polygonReadClient.readContract({
+          address: COLLATERAL_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [address as `0x${string}`],
+        }) as Promise<bigint>,
+        polygonReadClient.readContract({
+          address: USDC_E_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [address as `0x${string}`],
+        }) as Promise<bigint>,
+        polygonReadClient.readContract({
+          address: COLLATERAL_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [address as `0x${string}`, EXCHANGE_ADDRESS],
+        }) as Promise<bigint>,
+        polygonReadClient.readContract({
+          address: COLLATERAL_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [address as `0x${string}`, NEG_RISK_EXCHANGE_ADDRESS],
+        }) as Promise<bigint>,
+        polygonReadClient.readContract({
+          address: COLLATERAL_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [address as `0x${string}`, NEG_RISK_ADAPTER_ADDRESS],
+        }) as Promise<bigint>,
+      ]);
+      executionSnapshot = {
+        submittedPusdAmount,
+        pUsdBalance: pUsdBalanceRaw.toString(),
+        pUsdToExchangeAllowance: pUsdToExchangeAllowanceRaw.toString(),
+        pUsdToNegRiskAllowance: pUsdToNegRiskAllowanceRaw.toString(),
+        pUsdToAdapterAllowance: pUsdToAdapterAllowanceRaw.toString(),
+      };
+      const walletCollateralAmount = Number(formatUnits(isV2Flow ? pUsdBalanceRaw : usdcBalanceRaw, 6));
+      const v2FeeHeadroomFactor = 0.995;
+      const balanceConstrainedAmount = isV2Flow
+        ? Math.min(submittedPusdAmount, toSixDecimals(walletCollateralAmount * v2FeeHeadroomFactor))
+        : Math.min(submittedPusdAmount, walletCollateralAmount);
+      if (!Number.isFinite(balanceConstrainedAmount) || balanceConstrainedAmount <= 0) {
+        setOrderError(`Your ${collateralTokenLabel} balance is too low after sizing checks. Add funds or reduce amount.`);
+        setOrderErrorDetails(JSON.stringify({
+          reason: 'balance-headroom-check-failed',
+          submittedPusdAmount,
+          walletCollateralAmount,
+          flowVersion,
+        }, null, 2));
+        return;
+      }
+      submittedPusdAmount = balanceConstrainedAmount;
+      Object.assign(submissionDebugContext, {
+        submittedPusdAmount,
+        walletCollateralAmount,
+        v2FeeHeadroomFactor: isV2Flow ? v2FeeHeadroomFactor : 1,
+      });
+      console.log('[TutorialFlow][Step5] Pre-submit collateral snapshot.', {
+        flowVersion,
+        walletCollateralAmount,
+        ...executionSnapshot,
+      });
+      const liveQuote = await getPrice(activeTokenId, 'BUY', flowVersion);
       const quotedBuyPrice = Number(liveQuote.price ?? 0);
       const executionPrice = Number.isFinite(quotedBuyPrice) && quotedBuyPrice > 0 ? quotedBuyPrice : referenceOutcomePrice;
-      const executionShares = executionPrice > 0 ? numericUsdcAmount / executionPrice : 0;
+      const executionShares = executionPrice > 0 ? submittedPusdAmount / executionPrice : 0;
       console.log('[TutorialFlow][Step5] Live BUY quote resolved.', {
         liveQuotePrice: quotedBuyPrice,
         executionPrice,
         executionShares,
+        submittedPusdAmount,
+        liveAskNotional,
+        preflightReason,
       });
       if (!Number.isFinite(executionPrice) || executionPrice <= 0 || !Number.isFinite(executionShares) || executionShares <= 0) {
         throw new Error('Could not derive a valid executable quote for this market right now.');
       }
       setLastOrderIntent({
-        usdcAmount: numericUsdcAmount,
+        requestedPusdAmount,
+        submittedPusdAmount,
         estimatedShares: executionShares,
         price: executionPrice,
       });
       setOrderError('');
       setOrderErrorDetails('');
-      const l2Client = createL2Client(walletClient, creds);
+      const l2Client = createL2Client(walletClient, creds, flowVersion);
       const result = await l2Client.createAndPostMarketOrder({
         tokenID: activeTokenId,
         side: Side.BUY,
-        amount: numericUsdcAmount,
+        amount: submittedPusdAmount,
+        userUSDCBalance: walletCollateralAmount,
       }, undefined, OrderType.FAK);
       console.log('[TutorialFlow][Step5] Raw order response.', {
         orderID: (result as any).orderID ?? (result as any).orderId,
@@ -535,17 +919,41 @@ export function TutorialFlow() {
         const normalized = responseError.toLowerCase();
         const pretty =
           normalized.includes('not enough balance') || normalized.includes('allowance')
-            ? 'Not enough USDC.e balance or allowance for this trade amount. Try a smaller amount or add funds.'
+            ? `Not enough ${collateralTokenLabel} balance or allowance for this trade amount. Try a smaller amount or add funds.`
+            : normalized.includes('no match')
+              ? 'No shares were available to match this market order at submission time. Try a smaller amount or retry.'
             : 'Trade could not be executed. Please try again with a smaller amount.';
+        console.error('[TutorialFlow][Step5] Order response indicates failure.', {
+          responseError,
+          responseStatus,
+          responseSuccess,
+          result,
+          executionSnapshot,
+          submissionDebugContext,
+        });
         setOrderResponse(null);
         setIsTradeModalOpen(false);
         setOrderError(pretty);
-        setOrderErrorDetails(JSON.stringify(result, null, 2));
+        setOrderErrorDetails(JSON.stringify({
+          result,
+          executionSnapshot,
+          submissionDebugContext,
+        }, null, 2));
+        emitTelemetry('trade_submit_failed', {
+          reason: responseError || 'unknown-response-failure',
+          tokenId: activeTokenId,
+          amount: submittedPusdAmount,
+        });
         return;
       }
 
       setOrderResponse(result);
       setIsTradeModalOpen(true);
+      emitTelemetry('trade_submitted', {
+        orderId: (result as any).orderID ?? (result as any).orderId,
+        tokenId: activeTokenId,
+        amount: submittedPusdAmount,
+      });
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('polyteacher:trade-executed', { detail: { orderId: result.orderID ?? result.orderId } }));
       }
@@ -554,12 +962,25 @@ export function TutorialFlow() {
       const normalized = raw.toLowerCase();
       const pretty =
         normalized.includes('not enough balance') || normalized.includes('allowance')
-          ? 'Not enough USDC.e balance or allowance for this trade amount. Try a smaller amount or add funds.'
+          ? `Not enough ${collateralTokenLabel} balance or allowance for this trade amount. Try a smaller amount or add funds.`
+          : normalized.includes('no match')
+            ? 'No shares were available at submission time to match this market buy. Try another market/outcome and retry.'
           : 'Trade failed before submission. Please retry.';
+      console.error('[TutorialFlow][Step5] Order submission threw before successful response.', {
+        error,
+        raw,
+        executionSnapshot,
+        submissionDebugContext,
+      });
       setOrderResponse(null);
       setIsTradeModalOpen(false);
       setOrderError(pretty);
       setOrderErrorDetails(raw);
+      emitTelemetry('trade_submit_failed', {
+        reason: raw,
+        tokenId: activeTokenId,
+        amount: submittedPusdAmount,
+      });
     }
   };
 
@@ -568,7 +989,7 @@ export function TutorialFlow() {
       <div className={`${styles.tutorialSplit} ${selectedEventSlug ? styles.tutorialSplitWithFocus : styles.tutorialSplitSingle}`}>
         <div className={styles.stepRail}>
           <p className={styles.moduleLead}>
-            <b>Module 1.1: Place Your First Polymarket Trade 🚀</b>. <br /> Go through an interactive flow to learn what Polymarket APIs are needed to execute trades in an application, step by step.
+            <b>Module 1.1: Place Your First Polymarket Trade 🚀</b>. <br /> Go through an interactive flow to learn what Polymarket APIs are needed to execute trades in an application, step by step. <br /> Current mode: <strong>{isV2Flow ? 'CLOB V2 (pUSD)' : 'Legacy CLOB (USDC.e era)'}</strong>.
           </p>
           <StepCard
             step={1}
@@ -593,7 +1014,7 @@ export function TutorialFlow() {
               >
                 event
               </span>
-              . This step fetches three specific tutorial events by slug and shows only their titles.
+              . This step fetches tutorial events for the selected mode and shows only their titles.
             </p>
             <button
               className={styles.primaryButton}
@@ -656,8 +1077,15 @@ export function TutorialFlow() {
             nextStepHint={nextStepHint}
             onNextStep={onNextStepClick}
           >
-            <p>Events contain grouped sub-markets. Pick any market in this event to continue.</p>
+            <p>
+              {isV2Flow
+                ? 'Events contain grouped sub-markets. We only show top sub-markets with visible CLOB V2 liquidity so this tutorial can execute pUSD trades.'
+                : 'Events contain grouped sub-markets. Pick any top sub-market in this event to continue through the legacy flow.'}
+            </p>
             <div className={styles.stepResult}>
+              {isV2Flow && isCheckingV2Liquidity ? (
+                <p className={styles.lockedText}>Checking CLOB V2 liquidity for this event...</p>
+              ) : null}
               {eventMarketOptions.map((market) => (
                 <button
                   className={`${styles.marketListItem} ${step2SelectedMarketId === market.id ? styles.marketListItemSelected : ''}`}
@@ -689,8 +1117,12 @@ export function TutorialFlow() {
                   </div>
                 </button>
               ))}
-              {eventMarketOptions.length === 0 ? (
-                <p className={styles.lockedText}>No active sub-markets available for this event right now.</p>
+              {!isCheckingV2Liquidity && eventMarketOptions.length === 0 ? (
+                <p className={styles.lockedText}>
+                  {isV2Flow
+                    ? 'No visible CLOB V2 liquidity found in the top sub-markets for this event right now. Choose another event.'
+                    : 'No active sub-markets available for this event right now.'}
+                </p>
               ) : null}
             </div>
           </StepCard>
@@ -718,7 +1150,7 @@ export function TutorialFlow() {
                   void (async () => {
                     try {
                       setIsDerivingCreds(true);
-                      const c = await createL1Client(walletClient).createOrDeriveApiKey();
+                      const c = await createL1Client(walletClient, flowVersion).createOrDeriveApiKey();
                       setCreds(c);
                     } catch (error) {
                       console.error('[TutorialFlow][Step3] Failed to derive API keys.', { error });
@@ -778,8 +1210,8 @@ export function TutorialFlow() {
 
           <StepCard
             step={4}
-            title="Set Token Allowances"
-            api="On-chain approval transaction"
+            title="Set Allowances"
+            api="On-chain approval transactions"
             apiHref={DOCS_LINKS.onchainOrderInfo}
             unlocked={unlocked.step4}
             isOpen={activeStep === 4}
@@ -789,8 +1221,14 @@ export function TutorialFlow() {
             nextStepHint={nextStepHint}
             onNextStep={onNextStepClick}
           >
-            <p>Before trading, you must complete multiple USDC.e and CTF approvals across required Polymarket contracts. For a typical user, this is a one-time setup per wallet on Polygon (unless approvals are revoked), and all approvals must finish before moving to the next step.</p>
-            <p><strong>Note:</strong> You need USDC.e on Polygon to complete this step onchain.</p>
+            <p>Before trading, you must complete multiple collateral-token and CTF approvals across required Polymarket contracts. For a typical user, this is a one-time setup per wallet on Polygon (unless approvals are revoked), and all approvals must finish before moving to the next step.</p>
+            <p>
+              <strong>Step 4 preflight:</strong>{' '}
+              {isV2Flow
+                ? 'Allowances do not require funded balance. Trading requires pUSD; if you only have USDC.e, use the navbar PUSD Wrapper before Step 5.'
+                : 'Allowances do not require funded balance. Legacy trading in Step 5 uses USDC.e.'}
+            </p>
+            <p><strong>Balance check:</strong> pUSD {pUsdBalanceLabel} | USDC.e {usdcEBalanceLabel}</p>
             <button
               className={styles.primaryButton}
               onClick={() =>
@@ -815,44 +1253,43 @@ export function TutorialFlow() {
                     setAllowanceProgress('');
                     setAllowanceTxs([]);
 
-                    const alreadyReady = await checkAllowances();
+                    const alreadyReady = await refreshTradingReadiness();
                     if (alreadyReady) {
                       setAllowanceReady(true);
                       setAllowanceNote('✓ All allowances set');
                       return;
                     }
-
                     const approvals = [
                       {
-                        label: 'USDC.e → Exchange',
-                        help: 'Allows the primary CLOB exchange contract to spend your USDC.e for BUY orders.',
+                        label: 'pUSD → Exchange V2',
+                        help: 'Allows the primary CLOB V2 exchange contract to spend your pUSD for BUY orders.',
                         run: async () =>
                           writeContractAsync({
-                            address: USDC_E_ADDRESS,
+                            address: COLLATERAL_ADDRESS,
                             abi: erc20Abi,
                             functionName: 'approve',
-                            args: [CLOB_EXCHANGE_ADDRESS, maxUint256],
+                            args: [EXCHANGE_ADDRESS, maxUint256],
                             chain: polygon,
                           }),
                       },
                       {
-                        label: 'CTF → Exchange',
-                        help: 'Allows the primary CLOB exchange contract to transfer your CTF outcome tokens when required.',
+                        label: 'CTF → Exchange V2',
+                        help: 'Allows the primary CLOB V2 exchange contract to transfer your CTF outcome tokens when required.',
                         run: async () =>
                           writeContractAsync({
                             address: CTF_ADDRESS,
                             abi: ERC1155_ABI,
                             functionName: 'setApprovalForAll',
-                            args: [CLOB_EXCHANGE_ADDRESS, true],
+                            args: [EXCHANGE_ADDRESS, true],
                             chain: polygon,
                           }),
                       },
                       {
-                        label: 'USDC.e → Neg-Risk Exchange',
-                        help: 'Allows the neg-risk exchange path to spend USDC.e for markets routed through that contract.',
+                        label: 'pUSD → Neg-Risk Exchange V2',
+                        help: 'Allows the neg-risk V2 exchange path to spend pUSD for markets routed through that contract.',
                         run: async () =>
                           writeContractAsync({
-                            address: USDC_E_ADDRESS,
+                            address: COLLATERAL_ADDRESS,
                             abi: erc20Abi,
                             functionName: 'approve',
                             args: [NEG_RISK_EXCHANGE_ADDRESS, maxUint256],
@@ -860,8 +1297,8 @@ export function TutorialFlow() {
                           }),
                       },
                       {
-                        label: 'CTF → Neg-Risk Exchange',
-                        help: 'Allows the neg-risk exchange path to transfer your CTF tokens when that route is used.',
+                        label: 'CTF → Neg-Risk Exchange V2',
+                        help: 'Allows the neg-risk V2 exchange path to transfer your CTF tokens when that route is used.',
                         run: async () =>
                           writeContractAsync({
                             address: CTF_ADDRESS,
@@ -872,11 +1309,11 @@ export function TutorialFlow() {
                           }),
                       },
                       {
-                        label: 'USDC.e → Neg-Risk Adapter',
-                        help: 'Allows the neg-risk adapter contract to spend USDC.e for adapter-based flows.',
+                        label: 'pUSD → Neg-Risk Adapter',
+                        help: 'Allows the neg-risk adapter contract to spend pUSD for adapter-based settlement routes.',
                         run: async () =>
                           writeContractAsync({
-                            address: USDC_E_ADDRESS,
+                            address: COLLATERAL_ADDRESS,
                             abi: erc20Abi,
                             functionName: 'approve',
                             args: [NEG_RISK_ADAPTER_ADDRESS, maxUint256],
@@ -885,7 +1322,7 @@ export function TutorialFlow() {
                       },
                       {
                         label: 'CTF → Neg-Risk Adapter',
-                        help: 'Allows the neg-risk adapter contract to transfer your CTF tokens for adapter settlements.',
+                        help: 'Allows the neg-risk adapter contract to transfer CTF tokens when adapter settlement is used.',
                         run: async () =>
                           writeContractAsync({
                             address: CTF_ADDRESS,
@@ -899,7 +1336,7 @@ export function TutorialFlow() {
 
                     for (let i = 0; i < approvals.length; i += 1) {
                       const current = approvals[i];
-                      setAllowanceProgress(`Approval ${i + 1}/6: ${current.label}`);
+                      setAllowanceProgress(`Approval ${i + 1}/${approvals.length}: ${current.label}`);
                       const hash = await current.run();
                       setAllowanceTxs((previous) => [...previous, { label: current.label, hash, help: current.help }]);
                       await polygonReadClient.waitForTransactionReceipt({
@@ -909,10 +1346,16 @@ export function TutorialFlow() {
                       });
                     }
 
-                    const confirmed = await checkAllowances();
+                    const confirmed = await refreshTradingReadiness();
                     setAllowanceReady(confirmed);
-                    setAllowanceProgress(confirmed ? 'All approvals completed (6/6).' : '');
+                    setAllowanceProgress(confirmed ? `All approvals completed (${approvals.length}/${approvals.length}).` : '');
                     setAllowanceNote(confirmed ? '✓ All allowances set' : 'Allowance failed: verification check did not pass.');
+                    if (confirmed) {
+                      emitTelemetry('allowances_completed', {
+                        approvals: approvals.length,
+                        wallet: signerAddress,
+                      });
+                    }
                   } catch (error) {
                     console.error('[TutorialFlow][Step5] Allowance update failed.', { error });
                     setAllowanceReady(false);
@@ -948,7 +1391,7 @@ export function TutorialFlow() {
           <StepCard
             step={5}
             title="Place Your First Order"
-            api="CLOB API — createAndPostOrder()"
+            api="CLOB API — createAndPostMarketOrder()"
             apiHref={DOCS_LINKS.createOrder}
             unlocked={unlocked.step5}
             isOpen={activeStep === 5}
@@ -958,7 +1401,13 @@ export function TutorialFlow() {
             nextStepHint={nextStepHint}
             onNextStep={onNextStepClick}
           >
-            <p>Enter how much USDC.e you want to spend. We convert that amount into shares automatically at the live market price.</p>
+            <p>Enter how much {collateralTokenLabel} you want to spend. We convert that amount into shares automatically at the live market price.</p>
+            <p><strong>Preflight:</strong> {hasCollateralBalance ? `${collateralTokenLabel} balance ready` : `${collateralTokenLabel} required`} | {allowanceReady ? 'allowances ready' : 'allowances missing'}</p>
+            {isV2Flow && !hasCollateralBalance ? (
+              <Link className={styles.primaryButton} href="/wrap">
+                Open PUSD Wrapper
+              </Link>
+            ) : null}
             <p><strong>Market:</strong> {selectedMarket?.question}</p>
             <p>
               <strong>Direction:</strong>{' '}
@@ -973,7 +1422,7 @@ export function TutorialFlow() {
             <div className={styles.amountCard}>
               <div className={styles.amountHeaderRow}>
                 <span className={styles.amountTitle}>Amount</span>
-                <span className={styles.amountCurrency}>USDC.e</span>
+                <span className={styles.amountCurrency}>{collateralTokenLabel}</span>
               </div>
               <div className={styles.amountInputWrap}>
                 <span className={styles.amountPrefix}>$</span>
@@ -988,11 +1437,25 @@ export function TutorialFlow() {
                   value={tradeAmountUsdc}
                 />
               </div>
+              <div className={styles.amountPresetRow}>
+                <button className={styles.amountPresetButton} onClick={() => applyTradePreset(BigInt(1), BigInt(4))} type="button">
+                  25%
+                </button>
+                <button className={styles.amountPresetButton} onClick={() => applyTradePreset(BigInt(1), BigInt(2))} type="button">
+                  50%
+                </button>
+                <button className={styles.amountPresetButton} onClick={() => applyTradePreset(BigInt(3), BigInt(4))} type="button">
+                  75%
+                </button>
+                <button className={styles.amountPresetButton} onClick={() => applyTradePreset(BigInt(1), BigInt(1))} type="button">
+                  Max
+                </button>
+              </div>
             </div>
             <p><strong>Estimated shares:</strong> {estimatedShares > 0 ? estimatedShares.toFixed(4) : 'n/a'} (based on selected outcome price)</p>
             <button
               className={styles.primaryButton}
-              disabled={referenceOutcomePrice <= 0 || numericUsdcAmount <= 0}
+              disabled={referenceOutcomePrice <= 0 || numericUsdcAmount <= 0 || !allowanceReady || !hasCollateralBalance}
               onClick={() => void placeOrder()}
               type="button"
             >
@@ -1035,33 +1498,56 @@ export function TutorialFlow() {
                   <>
                     <p className={styles.apiTag}>Choose your outcome.</p>
                     <div className={styles.outcomeChooser}>
-                      <button
-                        className={
-                          selectedOutcome === null
-                            ? styles.outcomeButton
-                            : selectedOutcome === 'yes'
-                              ? styles.outcomeYesActive
-                              : styles.outcomeYesPassive
-                        }
-                        onClick={() => setSelectedOutcome('yes')}
-                        type="button"
+                      <div
+                        className={styles.outcomeChoiceWrap}
+                        data-help={isV2Flow && !canSelectYesOutcome ? 'Disabled because no visible V2 ask liquidity is currently available for YES on this market.' : undefined}
                       >
-                        Yes {yesCents}
-                      </button>
-                      <button
-                        className={
-                          selectedOutcome === null
-                            ? styles.outcomeButton
-                            : selectedOutcome === 'no'
-                              ? styles.outcomeNoActive
-                              : styles.outcomeNoPassive
-                        }
-                        onClick={() => setSelectedOutcome('no')}
-                        type="button"
+                        <button
+                          className={`${ 
+                            selectedOutcome === null
+                              ? styles.outcomeButton
+                              : selectedOutcome === 'yes'
+                                ? styles.outcomeYesActive
+                                : styles.outcomeYesPassive
+                          } ${!canSelectYesOutcome ? styles.outcomeDisabled : ''}`}
+                          disabled={!canSelectYesOutcome}
+                          onClick={() => {
+                            if (!canSelectYesOutcome) return;
+                            setSelectedOutcome('yes');
+                          }}
+                          type="button"
+                        >
+                          Yes {yesCents}
+                        </button>
+                      </div>
+                      <div
+                        className={styles.outcomeChoiceWrap}
+                        data-help={isV2Flow && !canSelectNoOutcome ? 'Disabled because no visible V2 ask liquidity is currently available for NO on this market.' : undefined}
                       >
-                        No {noCents}
-                      </button>
+                        <button
+                          className={`${
+                            selectedOutcome === null
+                              ? styles.outcomeButton
+                              : selectedOutcome === 'no'
+                                ? styles.outcomeNoActive
+                                : styles.outcomeNoPassive
+                          } ${!canSelectNoOutcome ? styles.outcomeDisabled : ''}`}
+                          disabled={!canSelectNoOutcome}
+                          onClick={() => {
+                            if (!canSelectNoOutcome) return;
+                            setSelectedOutcome('no');
+                          }}
+                          type="button"
+                        >
+                          No {noCents}
+                        </button>
+                      </div>
                     </div>
+                    {isV2Flow && (!canSelectYesOutcome || !canSelectNoOutcome) ? (
+                      <p className={styles.pollingText}>
+                        Outcome availability (V2 asks): YES {canSelectYesOutcome ? 'ready' : 'unavailable'} | NO {canSelectNoOutcome ? 'ready' : 'unavailable'}
+                      </p>
+                    ) : null}
                     {!selectedOutcome ? (
                       <p className={styles.pollingText}>Select YES or NO to unlock Step 3.</p>
                     ) : null}
@@ -1188,8 +1674,14 @@ export function TutorialFlow() {
               <p><strong>Status:</strong> {executedStatus}</p>
               <p>
                 <strong>Requested Spend:</strong>{' '}
-                {lastOrderIntent && Number.isFinite(lastOrderIntent.usdcAmount)
-                  ? `${lastOrderIntent.usdcAmount.toFixed(4)} USDC.e`
+                {lastOrderIntent && Number.isFinite(lastOrderIntent.requestedPusdAmount)
+                  ? `${lastOrderIntent.requestedPusdAmount.toFixed(4)} pUSD`
+                  : 'n/a'}
+              </p>
+              <p>
+                <strong>Submitted Spend:</strong>{' '}
+                {lastOrderIntent && Number.isFinite(lastOrderIntent.submittedPusdAmount)
+                  ? `${lastOrderIntent.submittedPusdAmount.toFixed(4)} pUSD`
                   : 'n/a'}
               </p>
               <p>

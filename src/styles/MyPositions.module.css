@@ -98,6 +98,71 @@
   font-size: 0.82rem;
 }
 
+.venueBadge {
+  position: relative;
+  display: inline-block;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.38rem;
+  cursor: help;
+}
+
+.venueBadgeV2 {
+  border-color: #86efac;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.venueBadgeV1 {
+  border-color: #fbcfe8;
+  background: #fdf2f8;
+  color: #9d174d;
+}
+
+.venueBadgeUnknown {
+  border-color: #d0d5dd;
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.venueBadge:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 2px;
+}
+
+.venueBadge::after {
+  content: attr(data-help);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  width: min(280px, 70vw);
+  border: 1px solid #d6cbff;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #312e81;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-weight: 600;
+  padding: 0.4rem 0.5rem;
+  box-shadow: 0 10px 24px rgba(16, 24, 40, 0.14);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 20;
+}
+
+.venueBadge:hover::after,
+.venueBadge:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
 .sellCta {
   margin-top: auto;
   border: 1px solid #cbc3ff;

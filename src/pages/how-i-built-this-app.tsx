@@ -7,11 +7,12 @@ import { createPublicClient, erc20Abi, formatUnits, http } from 'viem';
 import { polygon } from 'viem/chains';
 import { useAccount, useWalletClient } from 'wagmi';
 
+import { POLYMARKET_CONTRACTS } from '../lib/clob';
 import styles from '../styles/HowIBuilt.module.css';
 import homeStyles from '../styles/Home.module.css';
 
 const POLYGON_RPC_URL = process.env.NEXT_PUBLIC_POLYGON_RPC_URL || 'https://polygon-rpc.com';
-const USDC_E_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174' as const;
+const COLLATERAL_ADDRESS = POLYMARKET_CONTRACTS.collateral as `0x${string}`;
 
 const HowIBuiltThisApp: NextPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -44,7 +45,7 @@ const HowIBuiltThisApp: NextPage = () => {
     setIsUsdcError(false);
     void polygonReadClient
       .readContract({
-        address: USDC_E_ADDRESS,
+        address: COLLATERAL_ADDRESS,
         abi: erc20Abi,
         functionName: 'balanceOf',
         args: [balanceAddress],
@@ -143,12 +144,15 @@ const HowIBuiltThisApp: NextPage = () => {
               </Link>
             </div>
             <div className={homeStyles.topNavRight}>
+              <a className={homeStyles.topNavTab} href="https://www.polywrap.fun/" rel="noreferrer noopener" target="_blank">
+                <span className={homeStyles.topNavTabText}>pUSD Wrapper ↗</span>
+              </a>
               <div className={homeStyles.topNavBalanceWrap}>
                 <div className={`${homeStyles.topNavTab} ${homeStyles.topNavCashTab}`}>
                   <span className={homeStyles.topNavTabText}>Balance</span>
                   <span className={homeStyles.topNavTabValue}>{usdcDisplay}</span>
                 </div>
-                <span className={homeStyles.topNavBalanceTooltip}>Your USDC.e balance on Polygon</span>
+                <span className={homeStyles.topNavBalanceTooltip}>Your pUSD balance on Polygon</span>
               </div>
               <Link className={homeStyles.topNavTab} href="/my-positions">
                 <span className={homeStyles.topNavTabText}>My Positions</span>
@@ -309,7 +313,7 @@ const HowIBuiltThisApp: NextPage = () => {
                 <li>Select specific market + outcome (Gamma)</li>
                 <li>Derive CLOB credentials from wallet signature (CLOB L1 auth)</li>
                 <li>Set on-chain approvals on Polygon (ERC20 + ERC1155)</li>
-                <li>Submit a BUY market order via CLOB using USDC.e notional input (L2 authenticated request)</li>
+                <li>Submit a BUY market order via CLOB V2 using pUSD notional input (L2 authenticated request)</li>
                 <li>Read position from Data API to confirm the result</li>
               </ul>
             </section>
@@ -366,16 +370,16 @@ const creds = await l1Client.createOrDeriveApiKey();`}</code>
             <section>
               <h2>4) On-Chain Approvals Before Trading</h2>
               <p>
-                Before placing orders, I run one-time Polygon approvals for USDC.e and CTF across the exchange
-                contracts used by normal and negative-risk markets. In-app, I execute six transactions and verify
-                completion.
+                Before placing orders, I run one-time Polygon approvals for pUSD and CTF across the V2 exchange
+                contracts used by normal and negative-risk markets. If a wallet starts with only USDC.e, I wrap to pUSD
+                first via Collateral Onramp. In-app, I execute six approval transactions and verify completion.
               </p>
               <ul>
-                <li>USDC.e <code>approve</code> to CLOB Exchange</li>
-                <li>CTF <code>setApprovalForAll</code> to CLOB Exchange</li>
-                <li>USDC.e <code>approve</code> to Neg-Risk Exchange</li>
-                <li>CTF <code>setApprovalForAll</code> to Neg-Risk Exchange</li>
-                <li>USDC.e <code>approve</code> to Neg-Risk Adapter</li>
+                <li>pUSD <code>approve</code> to CLOB Exchange V2</li>
+                <li>CTF <code>setApprovalForAll</code> to CLOB Exchange V2</li>
+                <li>pUSD <code>approve</code> to Neg-Risk Exchange V2</li>
+                <li>CTF <code>setApprovalForAll</code> to Neg-Risk Exchange V2</li>
+                <li>pUSD <code>approve</code> to Neg-Risk Adapter</li>
                 <li>CTF <code>setApprovalForAll</code> to Neg-Risk Adapter</li>
               </ul>
               <p>
@@ -387,8 +391,8 @@ const creds = await l1Client.createOrDeriveApiKey();`}</code>
             <section>
               <h2>5) Order Execution: First Trade</h2>
               <p>
-                I keep order entry simple: user enters USDC.e amount, and the app computes estimated shares from the
-                current outcome price. Then I submit a BUY market order via the L2 client using USDC.e amount as
+                I keep order entry simple: user enters pUSD amount, and the app computes estimated shares from the
+                current outcome price. Then I submit a BUY market order via the L2 client using pUSD amount as
                 notional:
               </p>
               <pre className={styles.codeBlock}>

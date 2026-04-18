@@ -5,6 +5,7 @@ import {
   fetchGammaTutorialMarkets,
   fetchSpecificTutorialMarkets,
 } from '../../../lib/gamma';
+import type { TutorialFlowVersion } from '../../../lib/gamma';
 import type { Market } from '../../../types/polymarket';
 
 export default async function handler(
@@ -14,15 +15,17 @@ export default async function handler(
   const limitQuery = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
   const tutorialQuery = Array.isArray(req.query.tutorial) ? req.query.tutorial[0] : req.query.tutorial;
   const presetQuery = Array.isArray(req.query.preset) ? req.query.preset[0] : req.query.preset;
+  const flowQuery = Array.isArray(req.query.flow) ? req.query.flow[0] : req.query.flow;
   const isTutorial = tutorialQuery === 'true';
   const isSpecificPreset = presetQuery === 'specific';
+  const flowVersion: TutorialFlowVersion = flowQuery === 'v2' ? 'v2' : 'legacy';
   const parsedLimit = Number(limitQuery ?? 18);
   const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 18;
 
   try {
-    console.log('[Gamma API Proxy] Request received.', { limit, isTutorial, isSpecificPreset });
+    console.log('[Gamma API Proxy] Request received.', { limit, isTutorial, isSpecificPreset, flowVersion });
     const markets = isSpecificPreset
-      ? await fetchSpecificTutorialMarkets()
+      ? await fetchSpecificTutorialMarkets(flowVersion)
       : isTutorial
         ? await fetchGammaTutorialMarkets(limit)
         : await fetchGammaMarketsByLiquidity(limit);
