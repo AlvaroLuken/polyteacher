@@ -8,7 +8,14 @@ import { createPublicClient, erc20Abi, formatUnits, http } from 'viem';
 import { polygon } from 'viem/chains';
 import { useAccount, useWalletClient } from 'wagmi';
 
-import { POLYMARKET_CONTRACTS, createL1Client, createL2Client, getOrderBook, getPrice } from '../lib/clob';
+import {
+  POLYMARKET_CONTRACTS,
+  createL1Client,
+  createL2Client,
+  getOrderBook,
+  getPrice,
+  type TradingFlowVersion,
+} from '../lib/clob';
 import homeStyles from '../styles/Home.module.css';
 import styles from '../styles/MyPositions.module.css';
 
@@ -26,6 +33,19 @@ type PositionSnapshot = {
 type VenueBadge = 'v1' | 'v2' | 'unknown';
 
 const POLL_INTERVAL_MS = 30_000;
+const CLOB_MIN_PRICE = 0.001;
+const CLOB_MAX_PRICE = 0.999;
+const SHARE_SIZE_DECIMALS = 6;
+
+type ApiCreds = {
+  key: string;
+  secret: string;
+  passphrase: string;
+};
+
+function clampToClobPriceRange(price: number): number {
+  return Math.min(CLOB_MAX_PRICE, Math.max(CLOB_MIN_PRICE, price));
+}
 
 const MyPositionsPage: NextPage = () => {
   const { address } = useAccount();
@@ -48,7 +68,7 @@ const MyPositionsPage: NextPage = () => {
   const [positions, setPositions] = useState<PositionSnapshot[]>([]);
   const [venueByTokenId, setVenueByTokenId] = useState<Record<string, VenueBadge>>({});
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [creds, setCreds] = useState<{ key: string; secret: string; passphrase: string } | null>(null);
+  const [credsByFlow, setCredsByFlow] = useState<Partial<Record<TradingFlowVersion, ApiCreds>>>({});
   const [sellingKey, setSellingKey] = useState('');
   const [sellMessageByKey, setSellMessageByKey] = useState<Record<string, string>>({});
 
@@ -263,22 +283,50 @@ const MyPositionsPage: NextPage = () => {
       setSellingKey(cardKey);
       setSellMessageByKey((previous) => ({ ...previous, [cardKey]: '' }));
       try {
-        const activeCreds = creds ?? (await createL1Client(walletClient).createOrDeriveApiKey());
-        if (!creds) {
-          setCreds(activeCreds);
-        }
-        const quote = await getPrice(position.tokenId, 'SELL');
-        const sellPrice = Number(quote.price ?? 0);
-        if (!Number.isFinite(sellPrice) || sellPrice <= 0) {
-          throw new Error('No valid market sell price available right now.');
+        const venue = venueByTokenId[position.tokenId] ?? 'unknown';
+        const flowVersion: TradingFlowVersion = venue === 'v1' ? 'legacy' : 'v2';
+        const existingCreds = credsByFlow[flowVersion];
+        const activeCreds = existingCreds ?? (await createL1Client(walletClient, flowVersion).createOrDeriveApiKey());
+        if (!existingCreds) {
+          setCredsByFlow((previous) => ({ ...previous, [flowVersion]: activeCreds }));
         }
 
-        const l2Client = createL2Client(walletClient, activeCreds);
+        const [quote, book] = await Promise.all([
+          getPrice(position.tokenId, 'SELL', flowVersion),
+          getOrderBook(position.tokenId, flowVersion),
+        ]);
+        const quoteSellPrice = Number(quote.price ?? 0);
+        const topBidPrice = Number(book.bids?.[0]?.price ?? 0);
+        if (!Number.isFinite(topBidPrice) || topBidPrice <= 0) {
+          throw new Error('No active bids are available for this position right now.');
+        }
+        const baseSellPrice = Number.isFinite(topBidPrice) && topBidPrice > 0 ? topBidPrice : quoteSellPrice;
+        const sellPrice = clampToClobPriceRange(baseSellPrice);
+        const normalizedSize = Number(position.size.toFixed(SHARE_SIZE_DECIMALS));
+        const hasValidPrice = Number.isFinite(sellPrice) && sellPrice >= CLOB_MIN_PRICE && sellPrice <= CLOB_MAX_PRICE;
+        console.log('[My Positions] Sell preflight snapshot.', {
+          tokenId: position.tokenId,
+          venue,
+          flowVersion,
+          positionSize: position.size,
+          normalizedSize,
+          quoteSellPrice,
+          topBidPrice,
+          baseSellPrice,
+          selectedSellPrice: sellPrice,
+          bidLevels: book.bids?.length ?? 0,
+          askLevels: book.asks?.length ?? 0,
+        });
+        if (!hasValidPrice || !Number.isFinite(normalizedSize) || normalizedSize <= 0) {
+          throw new Error('No executable bid price is available for this position right now.');
+        }
+
+        const l2Client = createL2Client(walletClient, activeCreds, flowVersion);
         const result = await l2Client.createAndPostOrder({
           tokenID: position.tokenId,
           side: Side.SELL,
           price: sellPrice,
-          size: position.size,
+          size: normalizedSize,
         });
 
         const responseError = String((result as { error?: unknown }).error ?? '');
@@ -286,7 +334,20 @@ const MyPositionsPage: NextPage = () => {
         const responseSuccess = (result as { success?: unknown }).success;
         const hasFailure = Boolean(responseError) || responseStatus >= 400 || responseSuccess === false;
         if (hasFailure) {
-          throw new Error(responseError || 'Sell order was rejected by CLOB.');
+          const normalizedError = responseError.toLowerCase();
+          const prettyError = normalizedError.includes('invalid price')
+            ? 'Sell failed because no valid executable bid price was available at submit time. Please retry in a moment.'
+            : responseError || 'Sell order was rejected by CLOB.';
+          console.error('[My Positions] Sell rejected by CLOB.', {
+            tokenId: position.tokenId,
+            flowVersion,
+            venue,
+            responseError,
+            responseStatus,
+            responseSuccess,
+            result,
+          });
+          throw new Error(prettyError);
         }
 
         setSellMessageByKey((previous) => ({
@@ -298,6 +359,11 @@ const MyPositionsPage: NextPage = () => {
         }
         void fetchPositions();
       } catch (error) {
+        console.error('[My Positions] Sell failed.', {
+          tokenId: position.tokenId,
+          cardKey,
+          error,
+        });
         setSellMessageByKey((previous) => ({
           ...previous,
           [cardKey]: `Sell failed: ${String(error)}`,
@@ -306,7 +372,7 @@ const MyPositionsPage: NextPage = () => {
         setSellingKey('');
       }
     },
-    [walletClient, creds, fetchPositions],
+    [walletClient, credsByFlow, fetchPositions, venueByTokenId],
   );
 
   useEffect(() => {
